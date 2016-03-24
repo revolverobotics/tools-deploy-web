@@ -41,6 +41,10 @@ class DeployStatus extends Command
         $this->initializeRemotes();
 
         $this->enumerateServices();
+
+        // $this->info('1. Increment version tag');
+        // $this->info('2. Run unit tests');
+        // $this->ask('What would you like to do now?');
     }
 
     private function initializeRemotes()

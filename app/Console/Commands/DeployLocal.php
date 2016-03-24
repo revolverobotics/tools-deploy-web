@@ -14,36 +14,13 @@ class DeployLocal extends Command
 
     protected $name = 'deploy:local';
 
-    protected $description = 'Check status of local code, version tag, run unit tests, and push to GitHub';
+    protected $description = '';
 
     public function fire()
     {
-        // $this->enumerateServices();
-
-        // config(['remote' => [
-        //     'connections' => [
-        //         'test' => [
-        //             'host'      => env('HOST_DEV_FRONTEND'),
-        //             'username'  => env('HOST_USERNAME'),
-        //             'password'  => '',
-        //             'key'       => env('DEPLOY_KEY'),
-        //             'keyphrase' => '',
-        //             'root'      => env('PATH_FRONTEND'),
-        //         ]
-        //     ]
-        // ]]);
-        // print_r(config('remote'));
-        // config('remote.connections', [
-        //     'test' => [
-        //         'host'      => env('HOST_DEV_FRONTEND'),
-        //         'username'  => env('HOST_USERNAME'),
-        //         'password'  => '',
-        //         'key'       => env('DEPLOY_KEY'),
-        //         'keyphrase' => '',
-        //         'root'      => env('PATH_FRONTEND'),
-        //     ]
-        // ]);
-
-        // SSH::into('test')->run(['cd ' . env('PATH_FRONTEND'), 'git --git-dir='.env('GIT_PATH_FRONTEND').' --work-tree=. status']);
+        // 1. Increment version tag
+        // 2. Verify .env & .env.testing files
+        // 3. Run unit tests
+        // 4. Push to GitHub if all passed
     }
 }
