@@ -13,7 +13,10 @@ class Kernel extends ConsoleKernel
      * @var array
      */
     protected $commands = [
-        // Commands\Inspire::class,
+        Commands\DeployLocal::class,
+        Commands\DeployDev::class,
+        Commands\DeployProduction::class,
+        Commands\DeployStatus::class,
     ];
 
     /**
