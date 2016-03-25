@@ -15,7 +15,7 @@ trait Deploy
 
     protected $status;
 
-    protected $statusHeaders = ['Service', 'Branch', 'Tag', 'Commit', 'Status'];
+    protected $statusHeaders = [' ', 'Service', 'Branch', 'Tag', 'Commit', 'Status'];
 
     protected $environments = ['local', 'dev', 'production'];
 
@@ -29,8 +29,12 @@ trait Deploy
 
     protected $execOutput;
 
+    protected $outputDelimiter = '--- break ---';
+
     private function environmentCheckStatus($whichEnvironment)
     {
+        $this->clearScreen();
+
         $this->setCommands([
             'git branch | grep \*',
             'git tag | tail -n1',
@@ -40,14 +44,61 @@ trait Deploy
 
         $this->environmentLoop($whichEnvironment, function()
         {
-            $this->info(PHP_EOL.PHP_EOL.'Repo status for ' . $this->currentEnvironment . ':');
+            $this->info(PHP_EOL.PHP_EOL.'Repo status for all services on ' . $this->currentEnvironment . ':');
 
             $this->printServiceTable($this->currentEnvironment);
 
         }, function()
         {
             $this->parseCheckStatusOutput();
-        });
+        },
+            "Checking repo status..."
+        );
+    }
+
+    private function parseCheckStatusOutput()
+    {
+        $env = $this->currentEnvironment;
+        $service = $this->currentService;
+
+        $this->status[$env][$service][' '] = array_search($service, $this->services)+1;
+
+        $this->status[$env][$service]['service'] = strtoupper($service);
+
+        if (isset($this->execOutput[0]))
+            $this->status[$env][$service]['branch'] = str_replace("---break---", "", $this->stripWhitespace(substr($this->execOutput[0], 2)));
+
+        if (isset($this->execOutput[1]))
+            $this->status[$env][$service]['tag'] = str_replace("---break---", "", $this->stripWhitespace($this->execOutput[1]));
+
+        if (isset($this->execOutput[2]))
+            $this->status[$env][$service]['commit'] = $this->stripWhitespace(substr($this->execOutput[2], 7, 7));
+
+        if (isset($this->execOutput[3])):
+
+            if (strpos($this->execOutput[3], 'nothing to commit, working directory clean') === false)
+                $this->status[$env][$service]['status'] = 'DIRTY';
+
+            else
+                $this->status[$env][$service]['status'] = 'CLEAN';
+
+        endif;
+    }
+
+    private function printServiceTable($env = null)
+    {
+        if (is_null($env))
+            $env = $this->currentEnvironment;
+
+        $this->table($this->statusHeaders, $this->status[$env]);
+    }
+
+    private function refreshServiceTable($env = null)
+    {
+        if (is_null($env))
+            $env = $this->currentEnvironment;
+
+        $this->environmentCheckStatus($env);
     }
 
     /**
@@ -57,11 +108,11 @@ trait Deploy
      * @param  [function] $callbackService  Function to execute after every $this->service iteration
      * @return null
      *
-     * The runCommands chain runs a set of $this->commands for every $this->services
-     * $callbackService will be run after runCommands executes $this->commands for each $service
+     * The runCommandsForEnvironment chain runs a set of $this->commands for every $this->services
+     * $callbackService will be run after runCommandsForService executes $this->commands for each $service
      *
      */
-    private function environmentLoop($whichEnvironment, $callbackEnv, $callbackService)
+    private function environmentLoop($whichEnvironment, $callbackEnv, $callbackService, string $message = null)
     {
         $this->getServices();
 
@@ -73,7 +124,7 @@ trait Deploy
 
             $this->currentEnvironment = $env;
 
-            $this->runCommands($env, $callbackService, "Checking repo status for {$env}:");
+            $this->runCommandsForEnvironment($env, $callbackService, $message);
 
             $callbackEnv();
 
@@ -119,6 +170,11 @@ trait Deploy
         return env('PATH_' . strtoupper($this->currentService));
     }
 
+    private function setCurrentService($service)
+    {
+        $this->currentService = $service;
+    }
+
     private function initializeRemotes()
     {
         $connections = [];
@@ -156,7 +212,7 @@ trait Deploy
         $this->commands = $commands;
     }
 
-    private function runCommands($whichEnvironment, $callback, string $message = null)
+    private function runCommandsForEnvironment($whichEnvironment, $callback, string $message = null)
     {
         if (is_null($message))
             $message = PHP_EOL . 'Running commands for ' . $whichEnvironment . ':';
@@ -170,11 +226,7 @@ trait Deploy
 
         foreach($this->services as $service):
 
-            $this->currentService = $service;
-
-            $this->commandChain();
-
-            $callback();
+            $this->runCommandsForService($service, $callback);
 
             $bar->advance();
 
@@ -183,16 +235,21 @@ trait Deploy
         $bar->finish();
     }
 
+    private function runCommandsForService($service, $callback = null, $liveOutput = false)
+    {
+        $this->setCurrentService($service);
+
+        $this->prepCommandsForExec();
+
+        $this->execCommands($liveOutput);
+
+        if (!is_null($callback))
+            $callback();
+    }
+
     private function clearCommandBuffer()
     {
         $this->commandBuffer = [];
-    }
-
-    private function commandChain()
-    {
-        $this->prepCommandsForExec();
-
-        $this->execCommands();
     }
 
     private function prepCommandsForExec()
@@ -209,7 +266,7 @@ trait Deploy
 
         foreach ($this->commands as $command):
 
-            if ($this->currentEnvironment != 'local' && strpos($command, 'git') !== false):
+            if ($this->currentEnvironment != 'local' && strpos($command, 'git ') !== false):
 
                 $lookup = 'git';
                 $insertPos = strpos($command, $lookup);
@@ -222,12 +279,12 @@ trait Deploy
 
             endif;
 
-            array_push($this->commandBuffer, $command, 'echo --- break ---');
+            array_push($this->commandBuffer, $command, 'echo ' . $this->outputDelimiter);
 
         endforeach;
     }
 
-    private function execCommands()
+    private function execCommands($liveOutput = false)
     {
         $counter = 0;
         $this->execOutput = [];
@@ -237,17 +294,29 @@ trait Deploy
         if ($this->currentEnvironment == 'local'):
             $commandList = implode(" && ", $commands);
             $process = new Process($commandList);
-            $process->run(function($type, $buffer) use (&$counter)
+            $process->run(function($type, $buffer) use (&$counter, $liveOutput)
             {
-                $this->collectExecOutput($buffer, $counter);
+                if ($liveOutput === true):
+                    $this->info($this->filterOutputBreak($buffer));
+
+                else:
+                    $this->collectExecOutput($buffer, $counter);
+
+                endif;
             });
 
         else:
 
             $remote = strtoupper($this->currentEnvironment) . '_' . strtoupper($this->currentService);
-            SSH::into($remote)->run($commands, function($buffer) use (&$counter)
+            SSH::into($remote)->run($commands, function($buffer) use (&$counter, $liveOutput)
             {
-                $this->collectExecOutput($buffer, $counter);
+                if ($liveOutput === true):
+                    $this->info($this->filterOutputBreak($buffer));
+
+                else:
+                    $this->collectExecOutput($buffer, $counter);
+
+                endif;
             });
 
         endif;
@@ -255,40 +324,41 @@ trait Deploy
         $this->clearCommandBuffer(); // done running, clear for next iteration
     }
 
+    private function filterOutputBreak($line)
+    {
+        if (strpos($line, $this->outputDelimiter) !== false)
+            return '';
+
+        return $line;
+    }
+
     private function collectExecOutput($buffer, &$counter)
     {
         if (!isset($this->execOutput[$counter]))
-            $this->execOutput[$counter] = $buffer.PHP_EOL;
+            $this->execOutput[$counter] = $buffer;
 
         else
-            $this->execOutput[$counter] .= $buffer.PHP_EOL;
+            $this->execOutput[$counter] .= $buffer;
 
-        if (strpos($buffer, '--- break ---') !== false)
+        if (strpos($buffer, $this->outputDelimiter) !== false)
             $counter++;
     }
 
-    private function parseCheckStatusOutput()
+    private function clearScreen()
     {
-        $env = $this->currentEnvironment;
-        $service = $this->currentService;
-
-        $this->status[$env][$service]['service'] = strtoupper($service);
-
-        $this->status[$env][$service]['branch'] = str_replace("---break---", "", preg_replace('/\s+/', '', substr($this->execOutput[0], 2)));
-
-        $this->status[$env][$service]['tag'] = str_replace("---break---", "", preg_replace('/\s+/', '', $this->execOutput[1]));
-
-        $this->status[$env][$service]['commit'] = preg_replace('/\s+/', '', substr($this->execOutput[2], 7, 7));
-
-        if (strpos($this->execOutput[3], 'nothing to commit, working directory clean') === false)
-            $this->status[$env][$service]['status'] = 'DIRTY';
-
-        else
-            $this->status[$env][$service]['status'] = 'CLEAN';
+        echo "\033[2J";
     }
 
-    private function printServiceTable($env)
+    private function strtoupperArray(array $array)
     {
-        $this->table($this->statusHeaders, $this->status[$env]);
+        foreach ($array as &$value)
+            $value = strtoupper($value);
+
+        return $array;
+    }
+
+    public function stripWhitespace(string $string)
+    {
+        return preg_replace('/\s+/', '', $string);
     }
 }
