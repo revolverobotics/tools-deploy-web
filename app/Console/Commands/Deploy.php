@@ -91,11 +91,11 @@ trait Deploy
                 break;
 
             case 'dev':
-                array_push($array, 'local');
+                array_push($array, 'dev');
                 break;
 
             case 'production':
-                array_push($array, 'local');
+                array_push($array, 'production');
                 break;
 
             case 'all':

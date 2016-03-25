@@ -29,7 +29,6 @@ class DeployLocal extends Command
     {
         $choices = [
             'Exit',
-            'Increment version tags',
             'Run unit tests',
             'Push code to GitHub'
         ];
@@ -40,11 +39,6 @@ class DeployLocal extends Command
         {
             case 'Exit':
                 $this->info('Done.' . PHP_EOL);
-                break;
-
-            case 'Increment version tags':
-                $this->info('Incrementing version tags of all services...' . PHP_EOL);
-                $this->incrementTags();
                 break;
 
             case 'Run unit tests':
@@ -59,11 +53,6 @@ class DeployLocal extends Command
                 $this->info('Done.' . PHP_EOL);
                 break;
         }
-    }
-
-    private function incrementTags()
-    {
-        
     }
 
     private function refreshServiceInfo()
