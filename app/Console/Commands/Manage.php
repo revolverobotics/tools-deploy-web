@@ -28,6 +28,12 @@ class Manage extends Command
 
         $this->project = new Project($this);
         $this->commander = new CommandRunner($this);
+
+        // Don't kill our script on ctrl+c:
+        declare(ticks = 1);
+        pcntl_signal(SIGINT, function () {
+        });
+
     }
 
     public function fire()
@@ -42,35 +48,62 @@ class Manage extends Command
 
     protected function projectLoop()
     {
-        $this->project->list();
-        // $project = $this->choice(
-        //     'Which project do you want to manage?',
-        //     array_merge(['<exit>'], $this->project->list()),
-        //     0
-        // );
-        //
-        // if ($project == '<exit>') {
-        //     $this->comment("Exiting...\n");
-        //     exit;
-        // }
+        // $this->project->list();
+        $project = $this->choice(
+            'Which project do you want to manage?',
+            array_merge(['<exit>'], $this->project->list()),
+            0
+        );
 
-        // $this->project->setCurrentProject($project);
-        $this->project->setCurrentProject('APIs');
+        if ($project == '<exit>') {
+            $this->comment("Exiting...\n");
+            exit;
+        }
+
+        $this->project->setCurrentProject($project);
 
         $this->project->getStatus();
 
         if ($this->project->current == 'APIs') {
             $this->menuAPILoop();
         } else {
-            $this->out(
-                'No code for managing individual projects yet.',
-                'error'
-            );
-            exit;
+            $this->menuLoop();
         }
     }
 
     protected function menuAPILoop()
+    {
+        $this->clearScreen();
+
+        $this->project->outWorkTree();
+
+        $tableHeaders = ['Project', 'Branch', 'Version', 'Commit', 'Status'];
+
+        $this->table($tableHeaders, $this->project->status);
+
+        $command = $this->choice(
+            'What do you want to do?',
+            [
+                '<go back>',
+                'Git Pull',
+                'Git Push',
+                'Synchronize Submodules',
+                'Run Unit Tests',
+                'Build',
+                'Deploy to Dev',
+                'Deploy to Production'
+            ],
+            0
+        );
+
+        if ($command == '<go back>') {
+            $this->projectLoop();
+        }
+
+        $this->menuAPILoop();
+    }
+
+    protected function menuLoop()
     {
         $this->clearScreen();
 
@@ -95,23 +128,29 @@ class Manage extends Command
             ],
             0
         );
+
+        if ($command == '<go back>') {
+            $this->projectLoop();
+        }
+
+        if ($command == 'Start Log Viewer') {
+            $this->startLogViewer($this->project->current);
+        }
+
+        $this->menuLoop();
     }
 
     protected function startLogViewer($project)
     {
         try {
-            declare(ticks = 1);
-            pcntl_signal(SIGINT, function () {
-            }); // don't kill the entire script on ctrl+c
             $process = new Process('php artisan tail --ansi');
-            $process->setWorkingDirectory("{$this->projectRoot}.{$project}");
+            $process->setWorkingDirectory($this->projectRoot.$project);
             $process->setTimeout(null);
-            $process->start();
-            $process->wait(function ($type, $buffer) use ($process) {
+            $process->run(function ($type, $buffer) {
                 $this->out($buffer);
             });
         } catch (\Symfony\Component\Process\Exception\RuntimeException $e) {
-            $process->stop();
+            $this->out("Exiting log viewer...\n", 'comment');
         }
     }
 }

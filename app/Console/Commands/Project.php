@@ -63,7 +63,7 @@ class Project
         $status = [];
 
         if ($this->current != 'APIs') {
-            return $this->getStatusWhole($this->current);
+            array_push($status, $this->getStatusWhole($this->current));
         } else {
             foreach ($this->projects as $project) {
                 if (!str_contains($project, 'api-')) {
