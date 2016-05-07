@@ -45,8 +45,6 @@ class DeployLocal extends Command
 
     private function home()
     {
-        // $this->clearScreen();
-
         $this->environmentCheckStatus('local');
 
         $this->mainMenu();
@@ -101,9 +99,9 @@ class DeployLocal extends Command
                 break;
 
             default;
-                $this->setCurrentService($this->menuChoice);
-                $this->manageMenu($this->menuChoice);
-                break;
+                $this->setCurrentService(strtolower($this->menuChoice));
+                exec('bash && pushd '.$this->getServicePath());
+                exit;
 
         endswitch;
     }
@@ -112,11 +110,14 @@ class DeployLocal extends Command
     {
         $this->clearScreen();
 
-        $this->refreshServiceTable();
+        $this->setCurrentService(strtolower($which));
 
         $this->setCommands(['pwd', 'git status']);
 
-        $this->runCommandsForService($which, null, true);
+        $this->runCommandsForService($which, null, function ()
+        {
+            $this->comment($this->filterOutputBreak($this->outputBuffer));
+        });
 
         $choices = [
             'Current Branch -> `git status`',
@@ -127,11 +128,12 @@ class DeployLocal extends Command
             'Current Branch -> Merge into master & Push to Github',
             ' master Branch -> Deploy to Dev Environment',
             ' master Branch -> Deploy to Production Environment',
+            'Run a custom command',
         ];
 
         array_unshift($choices, 'Back');
 
-        $this->menuChoice = $this->choice('Operation?', $choices, 0);
+        $this->menuChoice = $this->choice('[' . strtoupper($this->currentService) . '] Operation?', $choices, 0);
 
         $choice = array_search($this->menuChoice, $choices);
 
@@ -151,6 +153,7 @@ class DeployLocal extends Command
 
             case 3:
                 $this->currentBranchPushToGithub();
+                $this->confirm('Hit <ENTER> to return Service Management menu.');
                 break;
 
             case 4:
@@ -159,18 +162,26 @@ class DeployLocal extends Command
 
             case 5:
                 $this->currentBranchDeployToDev();
+                $this->confirm('Hit <ENTER> to return Service Management menu.');
                 break;
 
             case 6:
                 $this->currentBranchMergeIntoMasterPushToGithub();
+                $this->confirm('Hit <ENTER> to return Service Management menu.');
                 break;
 
             case 7:
                 $this->masterBranchDeployToDev();
+                $this->confirm('Hit <ENTER> to return Service Management menu.');
                 break;
 
             case 8:
                 $this->masterBranchDeployToProduction();
+                $this->confirm('Hit <ENTER> to return Service Management menu.');
+                break;
+
+            case 9:
+                $this->customCommand();
                 break;
 
             default:
@@ -236,6 +247,7 @@ class DeployLocal extends Command
     {
         $this->setCommands([
             'pwd',
+            'git add --all',
             'branch=$(git branch | sed -n -e \'s/^\* \(.*\)/\1/p\')',
             'git push origin $branch'
         ]);
@@ -248,7 +260,13 @@ class DeployLocal extends Command
             'vendor/phpunit/phpunit/phpunit'
         ]);
 
-        $this->runCommandsForService($this->currentService, null, true);
+        $this->runCommandsForService($this->currentService, null, function ()
+        {
+            $this->line($this->filterOutputBreak($this->outputBuffer));
+        });
+
+        if ($this->confirm('Re-run unit tests? [y|N]'))
+            $this->currentBranchRunUnitTests();
     }
 
     private function currentBranchDeployToDev()
@@ -300,5 +318,30 @@ class DeployLocal extends Command
         ]);
 
         $this->runCommandsForService($this->currentService, null, true);
+    }
+
+    // private function customCommand($command = null)
+    // {
+    //     exec('bash --init-file <(echo ". \"$HOME/.bashrc\";")');
+    // }
+
+    private function customCommand($command = null)
+    {
+        if (is_null($command))
+            $command = $this->ask('Run command [exit]');
+
+        if ($command == 'exit')
+            return false;
+
+        $this->setCommands([
+            $command
+        ]);
+
+        $this->runCommandsForService($this->currentService, null, true);
+
+        $command = $this->ask('Run another command [exit]');
+
+        if ($command != 'exit')
+            $this->customCommand($command);
     }
 }

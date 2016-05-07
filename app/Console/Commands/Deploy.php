@@ -17,7 +17,7 @@ trait Deploy
 
     protected $statusHeaders = [' ', 'Service', 'Branch', 'Tag', 'Commit', 'Status'];
 
-    protected $environments = ['local', 'dev', 'production'];
+    protected $environments = ['local', 'jenkins', 'dev', 'production'];
 
     protected $currentService;
 
@@ -28,6 +28,8 @@ trait Deploy
     protected $commandBuffer;
 
     protected $execOutput;
+
+    protected $outputBuffer;
 
     protected $outputDelimiter = '--- break ---';
 
@@ -44,7 +46,7 @@ trait Deploy
 
         $this->environmentLoop($whichEnvironment, function()
         {
-            $this->info(PHP_EOL.PHP_EOL.'Repo status for all services on ' . $this->currentEnvironment . ':');
+            $this->comment(PHP_EOL.PHP_EOL.'Repo status for all services on ' . $this->currentEnvironment . ':');
 
             $this->printServiceTable($this->currentEnvironment);
 
@@ -141,20 +143,24 @@ trait Deploy
                 array_push($array, 'local');
                 break;
 
+            case 'jenkins':
+                array_push($array, 'local', 'jenkins');
+                break;
+
             case 'dev':
-                array_push($array, 'dev');
+                array_push($array, 'local', 'dev');
                 break;
 
             case 'production':
-                array_push($array, 'production');
+                array_push($array, 'local', 'production');
                 break;
 
             case 'all':
-                array_push($array, 'local', 'dev', 'production');
+                array_push($array, 'local', 'jenkins', 'dev', 'production');
                 break;
 
             default:
-                array_push($array, 'local', 'dev', 'production');
+                array_push($array, 'local');
         }
 
         $this->environments = $array;
@@ -167,7 +173,18 @@ trait Deploy
 
     private function getServicePath()
     {
-        return env('PATH_' . strtoupper($this->currentService));
+        $env = strtoupper($this->currentEnvironment);
+        $service = strtoupper($this->currentService);
+
+        $path = env('PATH_'.$env.'_'.$service, null);
+        if (is_null($path))
+            $path = env('PATH_'.$service);
+
+        if (is_null($path))
+            throw new \Exception('Couldn\'t get path to service: '.
+            $service);
+
+        return $path;
     }
 
     private function setCurrentService($service)
@@ -189,13 +206,28 @@ trait Deploy
                 $env = strtoupper($env);
                 $service = strtoupper($service);
 
+                $username = env('HOST_'.$env.'_USERNAME', null);
+
+                if (is_null($username))
+                    $username = env('HOST_USERNAME');
+
+                $path = env('PATH_'.$env.'_'.$service, null);
+
+                if (is_null($path))
+                    $path = env('PATH_'.$service);
+
+                $key = env($env.'_KEY', null);
+
+                if (is_null($key))
+                    $key = env('DEPLOY_KEY');
+
                 $connections[$env.'_'.$service] = [
                     'host'      => env('HOST_'.$env.'_'.$service),
-                    'username'  => env('HOST_USERNAME'),
+                    'username'  => $username,
                     'password'  => '',
-                    'key'       => env('DEPLOY_KEY'),
+                    'key'       => $key,
                     'keyphrase' => '',
-                    'root'      => env('PATH_'.$service),
+                    'root'      => $path,
                 ];
 
             endforeach;
@@ -220,7 +252,7 @@ trait Deploy
         else
             $message = PHP_EOL . $message;
 
-        $this->comment($message);
+        $this->line($message);
 
         $bar = $this->output->createProgressBar(count($this->services));
 
@@ -258,21 +290,26 @@ trait Deploy
 
         $serviceUpper = strtoupper($this->currentService);
 
+        $servicePath = $this->getServicePath();
+
         /*
             all commands are run per service, so cd into the correct directory
             before executing them
         */
-        array_push($this->commandBuffer, 'cd ' . $this->getServicePath());
+        array_push($this->commandBuffer, 'cd ' . $servicePath);
 
         foreach ($this->commands as $command):
 
             if ($this->currentEnvironment != 'local' && strpos($command, 'git ') !== false):
 
+                $workTree = $this->getServicePath();
+
                 $lookup = 'git';
                 $insertPos = strpos($command, $lookup);
                 $command = substr_replace(
                     $command,
-                    ' --git-dir=' . env('GIT_PATH_' . $serviceUpper) . ' --work-tree=.',
+                    ' --git-dir='.env('GIT_PATH_'.$serviceUpper).
+                    ' --work-tree='.$servicePath.' ',
                     $insertPos + strlen($lookup),
                     0
                 );
@@ -296,7 +333,12 @@ trait Deploy
             $process = new Process($commandList);
             $process->run(function($type, $buffer) use (&$counter, $liveOutput)
             {
-                if ($liveOutput === true):
+                $this->outputBuffer = $buffer;
+
+                if (gettype($liveOutput) == 'object'):
+                    $liveOutput();
+
+                elseif ($liveOutput === true):
                     $this->info($this->filterOutputBreak($buffer));
 
                 else:
@@ -310,7 +352,12 @@ trait Deploy
             $remote = strtoupper($this->currentEnvironment) . '_' . strtoupper($this->currentService);
             SSH::into($remote)->run($commands, function($buffer) use (&$counter, $liveOutput)
             {
-                if ($liveOutput === true):
+                $this->outputBuffer = $buffer;
+
+                if (gettype($liveOutput) == 'object'):
+                    $liveOutput();
+
+                elseif ($liveOutput === true):
                     $this->info($this->filterOutputBreak($buffer));
 
                 else:
