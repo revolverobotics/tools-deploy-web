@@ -3,10 +3,6 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Symfony\Component\Process\Process;
-use Symfony\Component\Process\Exception\ProcessFailedException;
-
-use App\Console\Commands\Deploy;
 
 class Manage extends Command
 {
@@ -16,141 +12,141 @@ class Manage extends Command
 
     protected $description = 'Manage all Laravel projects on local dev.';
 
-    public $projectRoot = '/var/www/';
+    public $projectRoot;
 
+    /**
+     * root, project, exit
+     */
+    protected $state = 'root';
+
+    /**
+    * Project class
+    */
     protected $project;
 
-    protected $commander;
+    /**
+     * Command class
+     */
+    protected $commandRunner;
+
+    /**
+     * Symfony process
+     */
+    public $process;
+
+    protected $projectAPICommands = [
+        'Git Pull',
+        'Git Push',
+        'Synchronize Submodules',
+        'Run Unit Tests',
+        'Build',
+        'Deploy',
+    ];
+
+    protected $projectCommands = [
+        'Git Pull',
+        'Git Push',
+        'Update Submodules',
+        'Start Log Viewer',
+        'Run Unit Tests',
+        'Build',
+        'Deploy'
+    ];
 
     public function __construct()
     {
         parent::__construct();
 
+        $this->projectRoot = env('PROJECT_ROOT', '/var/www');
+
         $this->project = new Project($this);
-        $this->commander = new CommandRunner($this);
+        $this->commandRunner = new CommandRunner($this);
 
         // Don't kill our script on ctrl+c:
-        declare(ticks = 1);
+        declare(ticks = 1); // might be able to delete this line, try it later.
         pcntl_signal(SIGINT, function () {
         });
-
     }
 
     public function fire()
     {
-        $this->projectLoop();
+        while ($this->state == 'root') {
+            $this->manageLoop();
+        }
+
+        $this->comment("Exiting...\n");
+        exit;
     }
 
-    public function signalHandler($signal)
+    protected function manageLoop()
     {
+        // First allow user to select what project to manage
+        $this->menuProject();
 
+        while ($this->state == 'project') {
+            $this->menuCommand();
+        }
     }
 
-    protected function projectLoop()
+    protected function menuProject()
     {
-        // $this->project->list();
-        $project = $this->choice(
+        $choices = $this->project->list();
+        array_unshift($choices, '<exit>');
+
+        $choice = $this->choice(
             'Which project do you want to manage?',
-            array_merge(['<exit>'], $this->project->list()),
+            $choices,
             0
         );
 
-        if ($project == '<exit>') {
-            $this->comment("Exiting...\n");
-            exit;
+        if ($choice == '<exit>') {
+            $this->state = 'exit';
+            return false;
         }
 
-        $this->project->setCurrentProject($project);
+        $this->project->setCurrentProject($choice);
 
         $this->project->getStatus();
 
+        $this->state = 'project';
+
+        return true;
+    }
+
+    protected function menuCommand()
+    {
+        $this->project->outWorkTree();
+
+        $tableHeaders = ['Project', 'Branch', 'Version', 'Commit', 'Status'];
+
+        $this->table($tableHeaders, $this->project->status);
+
         if ($this->project->current == 'APIs') {
-            $this->menuAPILoop();
+            $choices = $this->projectAPICommands;
         } else {
-            $this->menuLoop();
+            $choices = $this->projectCommands;
         }
-    }
 
-    protected function menuAPILoop()
-    {
-        $this->clearScreen();
+        array_unshift($choices, '<go back>');
 
-        $this->project->outWorkTree();
-
-        $tableHeaders = ['Project', 'Branch', 'Version', 'Commit', 'Status'];
-
-        $this->table($tableHeaders, $this->project->status);
-
-        $command = $this->choice(
+        $choice = $this->choice(
             'What do you want to do?',
-            [
-                '<go back>',
-                'Git Pull',
-                'Git Push',
-                'Synchronize Submodules',
-                'Run Unit Tests',
-                'Build',
-                'Deploy to Dev',
-                'Deploy to Production'
-            ],
+            $choices,
             0
         );
 
-        if ($command == '<go back>') {
-            $this->projectLoop();
+        if ($choice == '<go back>') {
+            $this->state = 'root';
+            return;
         }
 
-        $this->menuAPILoop();
-    }
-
-    protected function menuLoop()
-    {
-        $this->clearScreen();
-
-        $this->project->outWorkTree();
-
-        $tableHeaders = ['Project', 'Branch', 'Version', 'Commit', 'Status'];
-
-        $this->table($tableHeaders, $this->project->status);
-
-        $command = $this->choice(
-            'What do you want to do?',
-            [
-                '<go back>',
-                'Git Pull',
-                'Git Push',
-                'Synchronize Submodules',
-                'Start Log Viewer',
-                'Run Unit Tests',
-                'Build',
-                'Deploy to Dev',
-                'Deploy to Production'
-            ],
-            0
-        );
-
-        if ($command == '<go back>') {
-            $this->projectLoop();
+        if (!method_exists($this->commandRunner, camel_case($choice))) {
+            $this->out('No method exists for that command yet.', 'error');
+            return;
         }
 
-        if ($command == 'Start Log Viewer') {
-            $this->startLogViewer($this->project->current);
-        }
+        $command = camel_case($choice);
 
-        $this->menuLoop();
-    }
-
-    protected function startLogViewer($project)
-    {
-        try {
-            $process = new Process('php artisan tail --ansi');
-            $process->setWorkingDirectory($this->projectRoot.$project);
-            $process->setTimeout(null);
-            $process->run(function ($type, $buffer) {
-                $this->out($buffer);
-            });
-        } catch (\Symfony\Component\Process\Exception\RuntimeException $e) {
-            $this->out("Exiting log viewer...\n", 'comment');
-        }
+        $this->commandRunner->$command($this->project->current);
     }
 }

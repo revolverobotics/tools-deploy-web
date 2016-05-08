@@ -2,6 +2,9 @@
 
 namespace App\Console\Commands;
 
+use Symfony\Component\Process\Process;
+use Symfony\Component\Process\Exception\ProcessFailedException;
+
 /**
  * Much like BladeRunner (or actually not at all), this class descends into
  * project directories and runs our usual git management and deployment
@@ -15,30 +18,6 @@ class CommandRunner
      */
     protected $c;
 
-    /**
-    * List of common operations we want to perform for our API services
-    */
-    public $apiCommands = [
-        'Synchronize Submodules',
-        'Push new [master] Version'
-    ];
-
-    /**
-     * List of commands that we can run in our projects
-     */
-    public $commands = [
-        '<go back>',
-        'Run a custom command',
-        'php artisan push',
-        'php artisan pull',
-        'git reset --hard',
-        'git checkout',
-        'git branch',
-        'git tag',
-        'git log -5 --color=always',
-        'git submodule update'
-    ];
-
     public function __construct($parentCommand)
     {
         if ($parentCommand instanceof \Illuminate\Console\Command) {
@@ -46,11 +25,6 @@ class CommandRunner
         } else {
             throw new \Exception('Must pass the command $this instance in.');
         }
-    }
-
-    public function listCommands()
-    {
-        return $this->commands;
     }
 
     public function execute($command, $directory, $verbose = true)
@@ -74,6 +48,23 @@ class CommandRunner
 
         if ($verbose == true) {
             $this->c->out("Done.\n");
+        }
+    }
+
+    public function startLogViewer($project)
+    {
+        $dir = str_replace("\\ ", " ", $this->c->projectRoot.$project);
+
+        try {
+            $this->c->process = new Process('php artisan tail --ansi');
+            $this->c->process
+                ->setWorkingDirectory($dir);
+            $this->c->process->setTimeout(null);
+            $this->c->process->run(function ($type, $buffer) {
+                $this->c->out($buffer);
+            });
+        } catch (\Symfony\Component\Process\Exception\RuntimeException $e) {
+            $this->c->out("Exiting log viewer...\n", 'comment');
         }
     }
 }

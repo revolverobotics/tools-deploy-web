@@ -31,19 +31,19 @@ class Project
         } else {
             throw new \Exception('Must pass the command $this instance in.');
         }
-
-
     }
 
     public function list()
     {
         $this->projects = ['APIs'];
 
-        $listing = scandir($this->c->projectRoot);
+        $root = str_replace("\\ ", " ", $this->c->projectRoot);
+
+        $listing = scandir($root);
 
         foreach ($listing as $item) {
-            if (is_dir("{$this->c->projectRoot}$item") &&
-                file_exists("{$this->c->projectRoot}{$item}/composer.json") &&
+            if (is_dir("{$root}$item") &&
+                file_exists("{$root}{$item}/composer.json") &&
                 !str_contains($item, 'tools-') // ignore tools
             ) {
                 array_push($this->projects, $item);
