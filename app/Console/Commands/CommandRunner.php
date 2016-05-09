@@ -105,7 +105,7 @@ class CommandRunner
     {
         $this->runFromStatuses(function ($status) {
             $this->startProcess(
-                "git status --color=always",
+                "git status",
                 $status['project']
             );
         });
@@ -166,9 +166,15 @@ class CommandRunner
     {
         $root = $this->c->projectRoot;
 
-        $this->runFromStatuses(function ($status) use ($root) {
+        $flags = $this->c->ask("Enter any flags you wish to use: ", 'none');
+
+        if ($flags == 'none') {
+            $flags = "";
+        }
+
+        $this->runFromStatuses(function ($status) use ($root, $flags) {
             $dir = "cd {$root}{$status['project']} && ";
-            passthru($dir."php artisan push origin --ansi");
+            passthru($dir."php artisan push origin --ansi $flags");
         });
     }
 
@@ -179,12 +185,26 @@ class CommandRunner
         $this->runFromStatuses(function ($status) {
             $this->startProcess(
                 'git pull origin master -f',
-                $status['project']."app/Submodules/ToolsLaravelMicroservice"
+                $status['project']."/app/Submodules/ToolsLaravelMicroservice"
             );
         });
     }
 
-    protected function gitPushSubmodules()
+    protected function pullLatestSubmodule()
+    {
+        // For now our only submodule is app/Submodules/ToolsLaravelMicroservice
+
+        $project = head($this->c->project->status)['project'];
+
+        $command = "git pull origin master -f";
+
+        $this->startProcess(
+            $command,
+            $project."/app/Submodules/ToolsLaravelMicroservice"
+        );
+    }
+
+    protected function pushSubmodule()
     {
         // For now our only submodule is app/Submodules/ToolsLaravelMicroservice
 
@@ -201,7 +221,7 @@ class CommandRunner
 
         $this->startProcess(
             $commands,
-            $project."app/Submodules/ToolsLaravelMicroservice"
+            $project."/app/Submodules/ToolsLaravelMicroservice"
         );
     }
 
