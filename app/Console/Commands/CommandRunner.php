@@ -27,44 +27,202 @@ class CommandRunner
         }
     }
 
-    public function execute($command, $directory, $verbose = true)
+    public function executor($project, $command)
     {
-        if ($command == 'Run a custom command') {
-            $command = $this->c->ask('What command?');
+        $method = camel_case($command);
+
+        if (!method_exists($this, $method)) {
+            $this->c->out('No method exists for that command yet.', 'error');
+            return;
         }
 
-        if ($verbose == true) {
-            $this->c->out("\nRunning {$command}...", 'comment');
-        }
+        $this->$method();
+    }
 
-        exec("cd {$directory} && {$command}", $lines);
+    protected function runFromStatuses($callback)
+    {
+        $statuses = $this->c->project->status;
 
-        array_unshift($lines, "");
-        array_push($lines, "");
-
-        foreach ($lines as $line) {
-            $this->c->out($line, 'info');
-        }
-
-        if ($verbose == true) {
-            $this->c->out("Done.\n");
+        foreach ($statuses as $status) {
+            $callback($status);
         }
     }
 
-    public function startLogViewer($project)
+    protected function startProcess($process, $project)
     {
         $dir = str_replace("\\ ", " ", $this->c->projectRoot.$project);
 
+        $this->c->out("Working in [ <cyan>$dir</cyan> ]\n", 'comment');
+        $this->c->out("Running `$process`...", 'line');
+
+        $this->c->process = new Process($process);
+        $this->c->process
+            ->setWorkingDirectory($dir);
+        $this->c->process->setTimeout(null);
+        $this->c->process->run(function ($type, $buffer) {
+            $this->c->out($buffer, 'info');
+        });
+
+        $this->c->out("Done.\n\n");
+    }
+
+    protected function customCommand()
+    {
+        $command = $this->c->ask('What would you like to run?');
+
+        $this->runFromStatuses(function ($status) use ($command) {
+            $this->startProcess(
+                $command,
+                $status['project']
+            );
+        });
+    }
+
+    protected function gitEnforceClean()
+    {
+        if (!$this->c->confirm('Enforce CLEAN status on all work trees?')) {
+            return;
+        }
+
+        // Before performing batch operations, let's make sure that all
+        // work trees to be operated on are clean.
+
+        $statuses = $this->c->project->status;
+
+        $this->runFromStatuses(function ($status) {
+            if ($status['status'] != 'CLEAN') {
+                $this->c->out(
+                    "Working branch for [ <cyan>{$status['project']}</cyan> ] ".
+                        "is dirty. Please fix before continuing.",
+                    'error'
+                );
+                return false;
+            }
+        });
+    }
+
+    protected function gitStatus()
+    {
+        $this->runFromStatuses(function ($status) {
+            $this->startProcess(
+                "git status --color=always",
+                $status['project']
+            );
+        });
+    }
+
+    protected function gitLog()
+    {
+        $this->runFromStatuses(function ($status) {
+            $this->startProcess(
+                "git log -3 --color=always",
+                $status['project']
+            );
+        });
+    }
+
+    protected function gitCheckout()
+    {
+        $branch = $this->c->ask('Checkout to which branch?');
+
+        $this->runFromStatuses(function ($status) use ($branch) {
+            $this->startProcess(
+                "git checkout {$branch}",
+                $status['project']
+            );
+        });
+    }
+
+    protected function gitReset()
+    {
+        $which =
+            $this->c->ask('Reset to which spec? (e.g., --hard or 4a9cb2f)');
+
+        $this->runFromStatuses(function ($status) use ($which) {
+            $this->startProcess(
+                "git reset {$which}",
+                $status['project']
+            );
+        });
+    }
+
+    protected function gitPull()
+    {
+        $branch = $this->c->ask("Pull which branch?", '(current)');
+
+        $this->runFromStatuses(function ($status) use ($branch) {
+            if ($branch == '(current)') {
+                $branch = $status['branch'];
+            }
+
+            $this->startProcess(
+                "git pull origin {$branch}",
+                $status['project']
+            );
+        });
+    }
+
+    protected function artisanPush()
+    {
+        $root = $this->c->projectRoot;
+
+        $this->runFromStatuses(function ($status) use ($root) {
+            $dir = "cd {$root}{$status['project']} && ";
+            passthru($dir."php artisan push origin --ansi");
+        });
+    }
+
+    protected function synchronizeSubmodules()
+    {
+        // For now our only submodule is app/Submodules/ToolsLaravelMicroservice
+
+        $this->runFromStatuses(function ($status) {
+            $this->startProcess(
+                'git pull origin master -f',
+                $status['project']."app/Submodules/ToolsLaravelMicroservice"
+            );
+        });
+    }
+
+    protected function gitPushSubmodules()
+    {
+        // For now our only submodule is app/Submodules/ToolsLaravelMicroservice
+
+        $project = head($this->c->project->status)['project'];
+
+        $message = $this->c->ask("Commit message?");
+
+        $commands =
+            "git add --all && ".
+            "git commit -am \"{$message}\" && ".
+            "git checkout master && ".
+            "git merge HEAD@{1} && ".
+            "git push origin master";
+
+        $this->startProcess(
+            $commands,
+            $project."app/Submodules/ToolsLaravelMicroservice"
+        );
+    }
+
+    protected function startLogViewer()
+    {
+        $project = head($this->c->project->status)['project'];
+
         try {
-            $this->c->process = new Process('php artisan tail --ansi');
-            $this->c->process
-                ->setWorkingDirectory($dir);
-            $this->c->process->setTimeout(null);
-            $this->c->process->run(function ($type, $buffer) {
-                $this->c->out($buffer);
-            });
+            $this->startProcess('php artisan tail --ansi', $project);
         } catch (\Symfony\Component\Process\Exception\RuntimeException $e) {
             $this->c->out("Exiting log viewer...\n", 'comment');
         }
+    }
+
+    protected function runUnitTests()
+    {
+        $root = $this->c->projectRoot;
+
+        $this->runFromStatuses(function ($status) use ($root) {
+            $dir = "cd {$root}{$status['project']} && ";
+            passthru($dir."vendor/phpunit/phpunit/phpunit --no-coverage");
+        });
     }
 }

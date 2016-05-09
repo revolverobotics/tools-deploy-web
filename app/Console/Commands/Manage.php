@@ -22,12 +22,12 @@ class Manage extends Command
     /**
     * Project class
     */
-    protected $project;
+    public $project;
 
     /**
      * Command class
      */
-    protected $commandRunner;
+    public $commandRunner;
 
     /**
      * Symfony process
@@ -35,8 +35,13 @@ class Manage extends Command
     public $process;
 
     protected $projectAPICommands = [
+        'Git Status',
+        'Git Log',
+        'Git Checkout',
+        'Git Reset',
         'Git Pull',
         'Git Push',
+        'Artisan Push',
         'Synchronize Submodules',
         'Run Unit Tests',
         'Build',
@@ -44,9 +49,13 @@ class Manage extends Command
     ];
 
     protected $projectCommands = [
+        'Git Status',
+        'Git Log',
+        'Git Reset',
         'Git Pull',
         'Git Push',
-        'Update Submodules',
+        'Artisan Push',
+        'Git Push Submodules',
         'Start Log Viewer',
         'Run Unit Tests',
         'Build',
@@ -106,8 +115,6 @@ class Manage extends Command
 
         $this->project->setCurrentProject($choice);
 
-        $this->project->getStatus();
-
         $this->state = 'project';
 
         return true;
@@ -116,6 +123,8 @@ class Manage extends Command
     protected function menuCommand()
     {
         $this->project->outWorkTree();
+
+        $this->project->getStatus();
 
         $tableHeaders = ['Project', 'Branch', 'Version', 'Commit', 'Status'];
 
@@ -127,6 +136,7 @@ class Manage extends Command
             $choices = $this->projectCommands;
         }
 
+        array_unshift($choices, 'Custom Command');
         array_unshift($choices, '<go back>');
 
         $choice = $this->choice(
@@ -140,13 +150,6 @@ class Manage extends Command
             return;
         }
 
-        if (!method_exists($this->commandRunner, camel_case($choice))) {
-            $this->out('No method exists for that command yet.', 'error');
-            return;
-        }
-
-        $command = camel_case($choice);
-
-        $this->commandRunner->$command($this->project->current);
+        $this->commandRunner->executor($this->project->current, $choice);
     }
 }

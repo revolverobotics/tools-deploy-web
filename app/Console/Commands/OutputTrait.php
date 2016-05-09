@@ -87,6 +87,9 @@ trait OutputTrait
         $style1 = new OutputFormatterStyle('white', 'cyan', ['bold']);
         $this->output->getFormatter()->setStyle('highlight', $style1);
 
+        $cyan = new OutputFormatterStyle('cyan', null, ['bold']);
+        $this->output->getFormatter()->setStyle('cyan', $cyan);
+
         $styled = $style ? "<$style>$string</$style>" : $string;
 
         $this->output->writeln($styled, $this->parseVerbosity($verbosity));

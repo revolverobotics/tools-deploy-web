@@ -104,18 +104,19 @@ class Project
         );
 
         $status = $this->getStatusPartial(
-            $dir.'git status',
+            $dir.'git status --porcelain',
             function ($result) {
-                return strpos(
-                    $result[0],
-                    'working directory clean'
-                ) == false ? 'CLEAN' : 'DIRTY';
+                if (count($result) > 0) {
+                    return 'DIRTY';
+                }
+
+                return 'CLEAN';
             }
         );
 
         $result = [
             'project'     => $project,
-            'dev'         => $branch,
+            'branch'      => $branch,
             'version'     => $version,
             'commit hash' => $commitHash,
             'status'      => $status
@@ -138,7 +139,7 @@ class Project
     public function outWorkTree()
     {
         $this->c->out(
-            "Currently working in [ \033[36m{$this->current}\033[33m ]",
+            "Currently working in [ <cyan>{$this->current}</cyan> ]",
             'comment'
         );
     }
