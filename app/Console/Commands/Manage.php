@@ -36,13 +36,9 @@ class Manage extends Command
 
     protected $projectAPICommands = [
         'Git Status',
-        'Git Log',
-        'Git Checkout',
-        'Git Reset',
-        'Git Pull',
-        'Git Push',
+        'Git Command',
         'Artisan Push',
-        'Synchronize Submodules',
+        'Pull Latest Submodules',
         'Run Unit Tests',
         'Build',
         'Deploy',
@@ -50,10 +46,7 @@ class Manage extends Command
 
     protected $projectCommands = [
         'Git Status',
-        'Git Log',
-        'Git Reset',
-        'Git Pull',
-        'Git Push',
+        'Git Command',
         'Artisan Push',
         'Pull Latest Submodule',
         'Push Submodule',
@@ -127,7 +120,9 @@ class Manage extends Command
 
         $this->project->getStatus();
 
-        $tableHeaders = ['Project', 'Branch', 'Version', 'Commit', 'Status'];
+        $tableHeaders = [
+            'Project', 'Branch', 'Version', 'Commit', 'Status', 'Remote'
+        ];
 
         $this->table($tableHeaders, $this->project->status);
 
@@ -151,6 +146,6 @@ class Manage extends Command
             return;
         }
 
-        $this->commandRunner->executor($this->project->current, $choice);
+        $this->commandRunner->executor($choice);
     }
 }

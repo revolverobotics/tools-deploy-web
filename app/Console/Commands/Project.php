@@ -42,8 +42,8 @@ class Project
         $listing = scandir($root);
 
         foreach ($listing as $item) {
-            if (is_dir("{$root}$item") &&
-                file_exists("{$root}{$item}/composer.json") &&
+            if (is_dir("{$root}/$item") &&
+                file_exists("{$root}/{$item}/composer.json") &&
                 !str_contains($item, 'tools-') // ignore tools
             ) {
                 array_push($this->projects, $item);
@@ -80,7 +80,7 @@ class Project
 
     protected function getStatusWhole($project)
     {
-        $dir = "cd {$this->c->projectRoot}{$project} && ";
+        $dir = "cd {$this->c->projectRoot}/{$project} && ";
 
         $branch = $this->getStatusPartial(
             $dir.'git branch | grep \*',
@@ -114,12 +114,20 @@ class Project
             }
         );
 
+        $remoteHash = $this->getStatusPartial(
+            $dir."git rev-parse origin/{$branch}",
+            function ($result) {
+                return substr($result[0], 0, 7);
+            }
+        );
+
         $result = [
             'project'     => $project,
             'branch'      => $branch,
             'version'     => $version,
             'commit hash' => $commitHash,
-            'status'      => $status
+            'status'      => $status,
+            'remote hash' => $remoteHash
         ];
 
         return $result;

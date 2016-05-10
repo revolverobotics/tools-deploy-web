@@ -18,6 +18,16 @@ class CommandRunner
      */
     protected $c;
 
+    protected $gitCommands = [
+        'Git Status',
+        'Git Log',
+        'Git Diff',
+        'Git Checkout',
+        'Git Reset',
+        'Git Pull',
+        'Git Push',
+    ];
+
     public function __construct($parentCommand)
     {
         if ($parentCommand instanceof \Illuminate\Console\Command) {
@@ -27,7 +37,7 @@ class CommandRunner
         }
     }
 
-    public function executor($project, $command)
+    public function executor($command)
     {
         $method = camel_case($command);
 
@@ -43,6 +53,12 @@ class CommandRunner
     {
         $statuses = $this->c->project->status;
 
+        // Operate on api-frontend last, since it depends on all the backends
+        if ($this->c->project->current == 'APIs') {
+            $first = array_shift($statuses);
+            array_push($statuses, $first);
+        }
+
         foreach ($statuses as $status) {
             $callback($status);
         }
@@ -50,7 +66,7 @@ class CommandRunner
 
     protected function startProcess($process, $project)
     {
-        $dir = str_replace("\\ ", " ", $this->c->projectRoot.$project);
+        $dir = str_replace("\\ ", " ", "{$this->c->projectRoot}/{$project}");
 
         $this->c->out("Working in [ <cyan>$dir</cyan> ]\n", 'comment');
         $this->c->out("Running `$process`...", 'line');
@@ -63,19 +79,51 @@ class CommandRunner
             $this->c->out($buffer, 'info');
         });
 
-        $this->c->out("Done.\n\n");
+        $this->c->out("Done.");
+        $this->c->outputSeparator();
     }
 
     protected function customCommand()
     {
-        $command = $this->c->ask('What would you like to run?');
+        $command = $this->c->ask('What would you like to run?', '<go back>');
+
+        if ($command == '<go back>') {
+            return;
+        }
 
         $this->runFromStatuses(function ($status) use ($command) {
-            $this->startProcess(
-                $command,
-                $status['project']
-            );
+            chdir("{$this->c->projectRoot}/{$status['project']}");
+            passthru($command);
         });
+
+        $this->c->out("Done.\n", 'comment');
+    }
+
+    protected function gitCommand()
+    {
+        // This method is pretty much like executor() except that we
+        // add a sub-menu for the git commands.
+        $choices = $this->gitCommands;
+        array_unshift($choices, '<go back>');
+
+        $command =
+            $this->c->choice('Which git command?', $choices, 0);
+
+        if ($command == '<go back>') {
+            return;
+        }
+
+        $method = camel_case($command);
+
+        if (!method_exists($this, $method)) {
+            $this->c->out('No method exists for that command yet.', 'error');
+            return;
+        }
+
+        $this->$method();
+
+        // Loop unless we choose <go back>
+        $this->gitCommand();
     }
 
     protected function gitEnforceClean()
@@ -116,6 +164,16 @@ class CommandRunner
         $this->runFromStatuses(function ($status) {
             $this->startProcess(
                 "git log -3 --color=always",
+                $status['project']
+            );
+        });
+    }
+
+    protected function gitDiff()
+    {
+        $this->runFromStatuses(function ($status) {
+            $this->startProcess(
+                "git diff --color=always",
                 $status['project']
             );
         });
@@ -173,12 +231,12 @@ class CommandRunner
         }
 
         $this->runFromStatuses(function ($status) use ($root, $flags) {
-            $dir = "cd {$root}{$status['project']} && ";
+            $dir = "cd {$root}/{$status['project']} && ";
             passthru($dir."php artisan push origin --ansi $flags");
         });
     }
 
-    protected function synchronizeSubmodules()
+    protected function pullLatestSubmodules()
     {
         // For now our only submodule is app/Submodules/ToolsLaravelMicroservice
 
@@ -188,20 +246,6 @@ class CommandRunner
                 $status['project']."/app/Submodules/ToolsLaravelMicroservice"
             );
         });
-    }
-
-    protected function pullLatestSubmodule()
-    {
-        // For now our only submodule is app/Submodules/ToolsLaravelMicroservice
-
-        $project = head($this->c->project->status)['project'];
-
-        $command = "git pull origin master -f";
-
-        $this->startProcess(
-            $command,
-            $project."/app/Submodules/ToolsLaravelMicroservice"
-        );
     }
 
     protected function pushSubmodule()
@@ -241,8 +285,27 @@ class CommandRunner
         $root = $this->c->projectRoot;
 
         $this->runFromStatuses(function ($status) use ($root) {
-            $dir = "cd {$root}{$status['project']} && ";
+            $dir = "cd {$root}/{$status['project']} && ";
+
+            $this->c->out(
+                "Running tests on [ <cyan>{$status['project']}</cyan> ]...\n",
+                'comment'
+            );
+
             passthru($dir."vendor/phpunit/phpunit/phpunit --no-coverage");
+
+            $this->c->out("\nDone.\n", 'comment');
+            $this->c->outputSeparator();
+        });
+    }
+
+    protected function build()
+    {
+        $root = $this->c->projectRoot;
+
+        $this->runFromStatuses(function ($status) use ($root) {
+            $dir = "cd {$root}/{$status['project']} && ";
+            passthru($dir."php artisan push origin --ansi -b");
         });
     }
 }
