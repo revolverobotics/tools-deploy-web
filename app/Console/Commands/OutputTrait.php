@@ -55,8 +55,9 @@ trait OutputTrait
 
     public function outputSeparator()
     {
-        $this->out(PHP_EOL.'-----------------------------------------------'
-            .PHP_EOL, 'line', '');
+        $cols = exec('tput cols');
+        $separator = str_repeat('-', $cols);
+        $this->out("\n{$separator}\n", 'line', '');
     }
 
     public function clearScreen()
@@ -89,6 +90,9 @@ trait OutputTrait
 
         $cyan = new OutputFormatterStyle('cyan', null, ['bold']);
         $this->output->getFormatter()->setStyle('cyan', $cyan);
+
+        $green = new OutputFormatterStyle('green', null, ['bold']);
+        $this->output->getFormatter()->setStyle('green', $green);
 
         $styled = $style ? "<$style>$string</$style>" : $string;
 

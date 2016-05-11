@@ -125,8 +125,8 @@ class Project
             'project'     => $project,
             'branch'      => $branch,
             'version'     => $version,
-            'commit hash' => $commitHash,
             'status'      => $status,
+            'commit hash' => $commitHash,
             'remote hash' => $remoteHash
         ];
 
@@ -146,9 +146,13 @@ class Project
 
     public function outWorkTree()
     {
-        $this->c->out(
-            "Currently working in [ <cyan>{$this->current}</cyan> ]",
-            'comment'
+        $cols = exec('tput cols');
+        $string = "_ Currently working in [ <cyan>{$this->current}</cyan> ] ";
+        $string .= str_repeat(
+            '_',
+            $cols-strlen(" _ Currently working in [ ".$this->current." ] ") - 1
         );
+
+        $this->c->out("{$string}\n", 'comment');
     }
 }

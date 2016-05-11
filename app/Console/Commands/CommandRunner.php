@@ -68,8 +68,17 @@ class CommandRunner
     {
         $dir = str_replace("\\ ", " ", "{$this->c->projectRoot}/{$project}");
 
-        $this->c->out("Working in [ <cyan>$dir</cyan> ]\n", 'comment');
-        $this->c->out("Running `$process`...", 'line');
+        $cols = exec('tput cols');
+
+        $string =
+            "_ Running `<green>{$process}</green>` in [ <cyan>$dir</cyan> ] ";
+
+        $string .= str_repeat(
+            '_',
+            $cols-strlen(" _ Running `{$process}` in [ $dir ] ")
+        );
+
+        $this->c->out($string."\n", 'comment', "\n");
 
         $this->c->process = new Process($process);
         $this->c->process
@@ -79,8 +88,7 @@ class CommandRunner
             $this->c->out($buffer, 'info');
         });
 
-        $this->c->out("Done.");
-        $this->c->outputSeparator();
+        $this->c->out("Done.\n\n");
     }
 
     protected function customCommand()
@@ -287,15 +295,21 @@ class CommandRunner
         $this->runFromStatuses(function ($status) use ($root) {
             $dir = "cd {$root}/{$status['project']} && ";
 
-            $this->c->out(
-                "Running tests on [ <cyan>{$status['project']}</cyan> ]...\n",
-                'comment'
+            $cols = exec('tput cols');
+            $string =
+                "_ Running tests on [ <cyan>{$status['project']}</cyan> ]... ";
+            $string .= str_repeat(
+                '_',
+                $cols - strlen(
+                    " _ Running tests on [ {$status['project']} ]... "
+                ) - 1
             );
+
+            $this->c->out("{$string}\n", 'comment');
 
             passthru($dir."vendor/phpunit/phpunit/phpunit --no-coverage");
 
-            $this->c->out("\nDone.\n", 'comment');
-            $this->c->outputSeparator();
+            $this->c->out("\nDone.\n\n", 'line');
         });
     }
 
