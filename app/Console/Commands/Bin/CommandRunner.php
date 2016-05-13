@@ -1,9 +1,10 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Console\Commands\Bin;
 
 use Cache;
 use SSH;
+use App\Console\Commands\Bin\Deployer;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Process\Exception\ProcessFailedException;
 

@@ -1,10 +1,19 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Console\Commands\Bin;
 
-class Test
+class Deployer
 {
+    /**
+     * The parent command that uses this class
+     */
     protected $c;
+
+    public $remote;
+
+    public $branch;
+
+    public $version;
 
     public function __construct($parentCommand)
     {
@@ -15,8 +24,10 @@ class Test
         }
     }
 
-    public function ok()
+    public function push()
     {
-        $this->c->line('ok');
+        $branch = $this->c->
     }
+
+    protected function getBranches()
 }

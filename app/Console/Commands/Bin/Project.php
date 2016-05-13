@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Console\Commands\Bin;
 
 /**
  * Much like BladeRunner (or actually not at all), this class descends into

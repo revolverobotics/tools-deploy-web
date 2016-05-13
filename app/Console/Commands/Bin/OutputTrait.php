@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Console\Commands\Bin;
 
 use Symfony\Component\Console\Formatter\OutputFormatterStyle;
 

@@ -4,6 +4,10 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 
+use App\Console\Commands\Bin\Project;
+use App\Console\Commands\Bin\OutputTrait;
+use App\Console\Commands\Bin\CommandRunner;
+
 class Manage extends Command
 {
     use OutputTrait;
