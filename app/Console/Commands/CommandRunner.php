@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use Cache;
+
 use Symfony\Component\Process\Process;
 use Symfony\Component\Process\Exception\ProcessFailedException;
 
@@ -60,6 +62,10 @@ class CommandRunner
         }
 
         foreach ($statuses as $status) {
+            $this->c->outputHeading(
+                "Working in [ <cyan>{$status['project']}</cyan> ]"
+            );
+
             $callback($status);
         }
     }
@@ -68,17 +74,10 @@ class CommandRunner
     {
         $dir = str_replace("\\ ", " ", "{$this->c->projectRoot}/{$project}");
 
-        $cols = exec('tput cols');
-
-        $string =
-            "_ Running `<green>{$process}</green>` in [ <cyan>$dir</cyan> ] ";
-
-        $string .= str_repeat(
-            '_',
-            $cols-strlen(" _ Running `{$process}` in [ $dir ] ")
+        $this->c->out(
+            "Running `<green>{$process}</green>` in [ <cyan>$dir</cyan> ]...\n",
+            'info'
         );
-
-        $this->c->out($string."\n", 'comment', "\n");
 
         $this->c->process = new Process($process);
         $this->c->process
@@ -93,10 +92,34 @@ class CommandRunner
 
     protected function customCommand()
     {
-        $command = $this->c->ask('What would you like to run?', '<go back>');
+        $commandArray = Cache::get('custom-commands');
+
+        if (is_null($commandArray)) {
+            $commandArray = [];
+        }
+
+        $this->c->out('Command history:');
+        foreach ($commandArray as $commandHistory) {
+            $this->c->out($commandHistory);
+        }
+
+        $command = $this->c->anticipate(
+            'What would you like to run?',
+            array_merge(['<go back>'], $commandArray),
+            '<go back>'
+        );
 
         if ($command == '<go back>') {
             return;
+        }
+
+        if (!in_array($command, $commandArray)) {
+            // Store command for later:
+            if (count($commandArray) > 10) {
+                array_shift($commandArray);
+            }
+            array_push($commandArray, $command);
+            Cache::forever('custom-commands', $commandArray);
         }
 
         $this->runFromStatuses(function ($status) use ($command) {
@@ -240,7 +263,7 @@ class CommandRunner
 
         $this->runFromStatuses(function ($status) use ($root, $flags) {
             $dir = "cd {$root}/{$status['project']} && ";
-            passthru($dir."php artisan push origin --ansi $flags");
+            passthru($dir."php artisan push --ansi $flags");
         });
     }
 
@@ -294,18 +317,6 @@ class CommandRunner
 
         $this->runFromStatuses(function ($status) use ($root) {
             $dir = "cd {$root}/{$status['project']} && ";
-
-            $cols = exec('tput cols');
-            $string =
-                "_ Running tests on [ <cyan>{$status['project']}</cyan> ]... ";
-            $string .= str_repeat(
-                '_',
-                $cols - strlen(
-                    " _ Running tests on [ {$status['project']} ]... "
-                ) - 1
-            );
-
-            $this->c->out("{$string}\n", 'comment');
 
             passthru($dir."vendor/phpunit/phpunit/phpunit --no-coverage");
 

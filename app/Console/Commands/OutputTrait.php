@@ -70,9 +70,23 @@ trait OutputTrait
         $this->outputBuffer = [];
     }
 
-    protected function searchOutput($searchTerm)
+    public function outputHeading($string)
     {
+        $cols = exec('tput cols');
 
+        $string = "_ {$string} ";
+
+        $untaggedString = strip_tags($string);
+
+        $len = $cols - strlen($untaggedString);
+
+        if ($len < 0) {
+            $len = 0;
+        }
+
+        $string .= str_repeat('_', $len);
+
+        $this->out("\n{$string}\n", 'comment');
     }
 
     /**

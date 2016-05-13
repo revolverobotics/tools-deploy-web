@@ -146,13 +146,8 @@ class Project
 
     public function outWorkTree()
     {
-        $cols = exec('tput cols');
-        $string = "_ Currently working in [ <cyan>{$this->current}</cyan> ] ";
-        $string .= str_repeat(
-            '_',
-            $cols-strlen(" _ Currently working in [ ".$this->current." ] ") - 1
+        $this->c->outputHeading(
+            "Currently working in [ <cyan>{$this->current}</cyan> ]"
         );
-
-        $this->c->out("{$string}\n", 'comment');
     }
 }
