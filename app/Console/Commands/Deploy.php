@@ -234,9 +234,7 @@ trait Deploy
 
         endforeach;
 
-        config(['remote' => [
-            'connections' => $connections
-        ]]);
+        config(['remote' => ['connections' => $connections]]);
     }
 
     private function setCommands(array $commands)

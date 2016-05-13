@@ -42,6 +42,7 @@ class Manage extends Command
         'Run Unit Tests',
         'Build',
         'Deploy',
+        'Compare With Remote',
     ];
 
     protected $projectCommands = [
@@ -53,7 +54,8 @@ class Manage extends Command
         'Start Log Viewer',
         'Run Unit Tests',
         'Build',
-        'Deploy'
+        'Deploy',
+        'Compare With Remote',
     ];
 
     public function __construct()
@@ -121,7 +123,7 @@ class Manage extends Command
         $this->project->getStatus();
 
         $tableHeaders = [
-            'Project', 'Branch', 'Version', 'Status', 'Commit', 'Remote'
+            'Project','Branch','Version','Status','Commit','Origin'
         ];
 
         $this->table($tableHeaders, $this->project->status);

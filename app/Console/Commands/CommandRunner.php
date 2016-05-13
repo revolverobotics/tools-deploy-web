@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use Cache;
-
+use SSH;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Process\Exception\ProcessFailedException;
 
@@ -331,6 +331,116 @@ class CommandRunner
         $this->runFromStatuses(function ($status) use ($root) {
             $dir = "cd {$root}/{$status['project']} && ";
             passthru($dir."php artisan push origin --ansi -b");
+        });
+    }
+
+    protected function compareWithRemote()
+    {
+        $root = $this->c->projectRoot;
+
+        $choice = $this->c->choice(
+            'Compare local with which remote?',
+            array_merge(['<skip>'], ['dev', 'production', 'jenkins']),
+            0
+        );
+
+        if ($choice == '<skip>') {
+            return false;
+        }
+
+        $this->runFromStatuses(function ($status) use ($root, $choice) {
+            chdir("{$this->c->projectRoot}/{$status['project']}");
+
+            $gitLog =
+                "log --pretty=oneline --color=always ".
+                "--abbrev-commit --abbrev=7 -n 6";
+
+            $this->c->out('Local git log:');
+            passthru("git {$gitLog}");
+            $this->c->out('');
+
+            exec('git remote -v', $lines);
+
+            foreach ($lines as $line) {
+                $remote = explode("\t", explode(":", $line)[0]);
+                $remotes[$remote[0]] = $remote[1];
+            }
+
+            if (!isset($remotes[$choice])) {
+                $this->c->out(
+                    "Remote {$choice} does not exist for this repo, skipping.",
+                    'error'
+                );
+                return false;
+            }
+
+            $remoteName = strtoupper($choice);
+            $projectSnakeCase =
+                strtoupper(str_replace("-", "_", $status['project']));
+            $address = $remotes[$choice];
+
+            $deployKey = env(
+                "{$remoteName}_DEPLOY_KEY",
+                env('DEPLOY_KEY', null)
+            );
+
+            if (is_null($deployKey)) {
+                $this->c->error(
+                    "`{$remoteName}_DEPLOY_KEY`".
+                    " or `DEPLOY_KEY`".
+                    " is not defined, skipping."
+                );
+                return false;
+            }
+
+            $deployPath = env(
+                "PATH_{$remoteName}_{$projectSnakeCase}",
+                env("PATH_{$projectSnakeCase}", null)
+            );
+
+            if (is_null($deployPath)) {
+                $this->c->error(
+                    "`PATH_{$remoteName}_{$projectSnakeCase}`",
+                    " or `PATH_{$projectSnakeCase}`".
+                    " is not defined, skipping."
+                );
+                return false;
+            }
+
+            $gitDir = env(
+                "GIT_REPO_{$remoteName}_{$projectSnakeCase}",
+                env("GIT_REPO_{$projectSnakeCase}", null)
+            );
+
+            if (is_null($gitDir)) {
+                $this->c->error(
+                    "`GIT_REPO_{$remoteName}_{$projectSnakeCase}`".
+                    " or `GIT_REPO_{$projectSnakeCase}`".
+                    " is not defined, skipping."
+                );
+                return false;
+            }
+
+            $connections[$remoteName] = [
+                'host'      => $address,
+                'username'  => env(
+                    $remoteName.'_DEPLOY_USERNAME',
+                    env('DEPLOY_USERNAME', null)
+                ),
+                'password'  => '',
+                'key'       => $deployKey,
+                'keyphrase' => '',
+                'root'      => $deployPath,
+            ];
+
+            config(['remote' => ['connections' => $connections]]);
+
+            $this->c->out('Remote git log:');
+            SSH::into($remoteName)->run([
+                "git --git-dir={$gitDir} --work-tree=. {$gitLog}"
+            ], function ($buffer) {
+                echo $buffer;
+            });
         });
     }
 }
