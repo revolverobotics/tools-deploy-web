@@ -41,25 +41,21 @@ class Manage extends Command
     protected $projectAPICommands = [
         'Git Status',
         'Git Command',
-        'Artisan Push',
         'Pull Latest Submodules',
         'Run Unit Tests',
-        'Build',
-        'Deploy',
         'Compare With Remote',
+        'Push Code',
     ];
 
     protected $projectCommands = [
         'Git Status',
         'Git Command',
-        'Artisan Push',
         'Pull Latest Submodule',
         'Push Submodule',
         'Start Log Viewer',
         'Run Unit Tests',
-        'Build',
-        'Deploy',
         'Compare With Remote',
+        'Push Code',
     ];
 
     public function __construct()
@@ -127,7 +123,7 @@ class Manage extends Command
         $this->project->getStatus();
 
         $tableHeaders = [
-            'Project','Branch','Version','Status','Commit','Origin'
+            'Project','Branch','Version','Status','Commit'
         ];
 
         $this->table($tableHeaders, $this->project->status);

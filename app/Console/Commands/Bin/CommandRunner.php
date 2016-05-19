@@ -2,8 +2,10 @@
 
 namespace App\Console\Commands\Bin;
 
-use Cache;
 use SSH;
+use Cache;
+use Dotenv\Dotenv;
+
 use App\Console\Commands\Bin\Deployer;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Process\Exception\ProcessFailedException;
@@ -263,8 +265,19 @@ class CommandRunner
         }
 
         $this->runFromStatuses(function ($status) use ($root, $flags) {
-            $dir = "cd {$root}/{$status['project']} && ";
-            passthru($dir."php artisan push --ansi $flags");
+            chdir("{$root}/{$status['project']}");
+            passthru("php artisan push --ansi $flags");
+        });
+    }
+
+    protected function pushCode()
+    {
+        $root = $this->c->projectRoot;
+
+        $deployer = new Deployer($this->c);
+
+        $this->runFromStatuses(function ($status) use ($deployer) {
+            $deployer->push($status['project']);
         });
     }
 
@@ -350,7 +363,14 @@ class CommandRunner
         }
 
         $this->runFromStatuses(function ($status) use ($root, $choice) {
-            chdir("{$this->c->projectRoot}/{$status['project']}");
+            $dir = "{$this->c->projectRoot}/{$status['project']}";
+
+            chdir($dir);
+
+            // Include our test variables (instead of specifying in phpunit-XX.xml)
+            if (file_exists("{$dir}/.env")) {
+                (new Dotenv($dir, '.env'))->load();
+            }
 
             $gitLog =
                 "log --pretty=oneline --color=always ".
@@ -369,7 +389,7 @@ class CommandRunner
 
             if (!isset($remotes[$choice])) {
                 $this->c->out(
-                    "Remote {$choice} does not exist for this repo, skipping.",
+                    "Remote [{$choice}] does not exist for this repo, skipping.",
                     'error'
                 );
                 return false;
@@ -380,43 +400,28 @@ class CommandRunner
                 strtoupper(str_replace("-", "_", $status['project']));
             $address = $remotes[$choice];
 
-            $deployKey = env(
-                "{$remoteName}_DEPLOY_KEY",
-                env('DEPLOY_KEY', null)
-            );
+            $deployKey = env('DEPLOY_KEY', null);
 
             if (is_null($deployKey)) {
-                $this->c->error(
-                    "`{$remoteName}_DEPLOY_KEY`".
-                    " or `DEPLOY_KEY`".
-                    " is not defined, skipping."
-                );
+                $this->c->error("`DEPLOY_KEY` is not defined, skipping.");
                 return false;
             }
 
-            $deployPath = env(
-                "PATH_{$remoteName}_{$projectSnakeCase}",
-                env("PATH_{$projectSnakeCase}", null)
-            );
+            $deployPath = env('REMOTE_WORKTREE', null);
 
             if (is_null($deployPath)) {
                 $this->c->error(
-                    "`PATH_{$remoteName}_{$projectSnakeCase}`",
-                    " or `PATH_{$projectSnakeCase}`".
+                    "`REMOTE_WORKTREE` in {$status['project']}".
                     " is not defined, skipping."
                 );
                 return false;
             }
 
-            $gitDir = env(
-                "GIT_REPO_{$remoteName}_{$projectSnakeCase}",
-                env("GIT_REPO_{$projectSnakeCase}", null)
-            );
+            $gitDir = env('REMOTE_GITDIR');
 
             if (is_null($gitDir)) {
                 $this->c->error(
-                    "`GIT_REPO_{$remoteName}_{$projectSnakeCase}`".
-                    " or `GIT_REPO_{$projectSnakeCase}`".
+                    "`REMOTE_GITDIR` in {$status['project']}".
                     " is not defined, skipping."
                 );
                 return false;
@@ -424,10 +429,7 @@ class CommandRunner
 
             $connections[$remoteName] = [
                 'host'      => $address,
-                'username'  => env(
-                    $remoteName.'_DEPLOY_USERNAME',
-                    env('DEPLOY_USERNAME', null)
-                ),
+                'username'  => env('DEPLOY_USERNAME', 'ec2-user'),
                 'password'  => '',
                 'key'       => $deployKey,
                 'keyphrase' => '',
