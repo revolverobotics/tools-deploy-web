@@ -39,8 +39,10 @@ trait DeployerPushTrait
         ));
 
         if ($this->git->remote == '<abort>') {
-            exit;
+            return false;
         }
+
+        return true;
     }
 
     protected function makeCommit()
@@ -92,18 +94,20 @@ trait DeployerPushTrait
                     $this->git->commit('', '--amend');
                 } else {
                     $this->c->error('User aborted commit on --amend');
-                    exit;
+                    return false;
                 }
             } else {
                 $commitMessage = $this->c->ask('Commit Message', '<abort>');
 
                 if ($commitMessage == '<abort>') {
-                    exit;
+                    return false;
                 }
 
                 $this->git->commit($commitMessage);
             }
         }
+
+        return true;
     }
 
     protected function pushToRemote()
@@ -127,7 +131,7 @@ trait DeployerPushTrait
                 );
             } else {
                 $this->c->error('Push aborted.');
-                exit;
+                return false;
             }
         } else {
             $this->c->out(
@@ -180,6 +184,8 @@ trait DeployerPushTrait
 
         $this->c->out('Push completed.', 'comment');
         $this->c->out('');
+
+        return true;
     }
 
     protected function pushTags()

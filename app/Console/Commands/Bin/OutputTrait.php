@@ -99,14 +99,17 @@ trait OutputTrait
      */
     public function line($string, $style = null, $verbosity = null)
     {
-        $style1 = new OutputFormatterStyle('white', 'cyan', ['bold']);
-        $this->output->getFormatter()->setStyle('highlight', $style1);
+        $highlight = new OutputFormatterStyle('white', 'cyan', ['bold']);
+        $this->output->getFormatter()->setStyle('highlight', $highlight);
 
         $cyan = new OutputFormatterStyle('cyan', null, ['bold']);
         $this->output->getFormatter()->setStyle('cyan', $cyan);
 
         $green = new OutputFormatterStyle('green', null, ['bold']);
         $this->output->getFormatter()->setStyle('green', $green);
+
+        $white = new OutputFormatterStyle('white', null, ['bold']);
+        $this->output->getFormatter()->setStyle('white', $white);
 
         $styled = $style ? "<$style>$string</$style>" : $string;
 

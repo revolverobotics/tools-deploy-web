@@ -123,7 +123,7 @@ class Manage extends Command
         $this->project->getStatus();
 
         $tableHeaders = [
-            'Project','Branch','Version','Status','Commit'
+            'Project', 'Branch', 'Version', 'Status', 'Commit', 'Origin'
         ];
 
         $this->table($tableHeaders, $this->project->status);

@@ -73,17 +73,25 @@ class Deployer
 
         $this->preFlightChecks();
 
+        $this->configRemotes();
+
         // check for env vars
-        $this->chooseRemote();
+        if (!$this->chooseRemote()) {
+            return;
+        }
 
         $this->c->out(
             'On branch [<cyan>'.$this->git->getCurrentBranch().'</cyan>]',
             'comment'
         );
 
-        $this->makeCommit();
+        if (!$this->makeCommit()) {
+            return;
+        }
 
-        $this->pushToRemote();
+        if (!$this->pushToRemote()) {
+            return;
+        }
     }
 
     protected function getFlags()
@@ -129,7 +137,7 @@ class Deployer
 
         // Include our test variables (instead of specifying in phpunit-XX.xml)
         if (file_exists("{$dir}/.env")) {
-            (new Dotenv($dir, '.env'))->load();
+            (new Dotenv($dir, '.env'))->overload();
         }
     }
 
@@ -168,5 +176,63 @@ class Deployer
         //     throw new \Exception('Manual push to Jenkins server disabled.'.
         //         PHP_EOL.'Push to origin with the -b option to run a build.');
         // }
+    }
+
+    protected function configRemotes()
+    {
+        $dir = str_replace(
+            "\\ ",
+            " ",
+            "{$this->c->projectRoot}/{$this->project}"
+        );
+
+        chdir($dir);
+
+        // Add project's remotes into the remote config for SSH
+        exec('git remote -v', $lines);
+
+        foreach ($lines as $line) {
+            $remote = explode("\t", explode(":", $line)[0]);
+            $remoteName = $remote[0];
+            $address = $remote[1];
+
+            $deployKey = env('DEPLOY_KEY', null);
+
+            if (is_null($deployKey)) {
+                $this->c->error("`DEPLOY_KEY` is not defined, skipping.");
+                return false;
+            }
+
+            $deployPath = env('REMOTE_WORKTREE', null);
+
+            if (is_null($deployPath)) {
+                $this->c->error(
+                    "`REMOTE_WORKTREE` in {$status['project']}".
+                    " is not defined, skipping."
+                );
+                return false;
+            }
+
+            $gitDir = env('REMOTE_GITDIR');
+
+            if (is_null($gitDir)) {
+                $this->c->error(
+                    "`REMOTE_GITDIR` in {$status['project']}".
+                    " is not defined, skipping."
+                );
+                return false;
+            }
+
+            $connections[$remoteName] = [
+                'host'      => $address,
+                'username'  => env('DEPLOY_USERNAME', 'ec2-user'),
+                'password'  => '',
+                'key'       => $deployKey,
+                'keyphrase' => '',
+                'root'      => $deployPath,
+            ];
+
+            config(['remote' => ['connections' => $connections]]);
+        }
     }
 }

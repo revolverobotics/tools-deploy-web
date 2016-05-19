@@ -354,11 +354,11 @@ class CommandRunner
 
         $choice = $this->c->choice(
             'Compare local with which remote?',
-            array_merge(['<skip>'], ['dev', 'production', 'jenkins']),
+            array_merge(['<abort>'], ['dev', 'production', 'jenkins']),
             0
         );
 
-        if ($choice == '<skip>') {
+        if ($choice == '<abort>') {
             return false;
         }
 
@@ -369,7 +369,7 @@ class CommandRunner
 
             // Include our test variables (instead of specifying in phpunit-XX.xml)
             if (file_exists("{$dir}/.env")) {
-                (new Dotenv($dir, '.env'))->load();
+                (new Dotenv($dir, '.env'))->overload();
             }
 
             $gitLog =

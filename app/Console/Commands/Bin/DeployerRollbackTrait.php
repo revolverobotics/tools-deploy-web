@@ -48,7 +48,7 @@ trait DeployerRollbackTrait
             $this->c->out(
                 'Reading current commit in case of rollback...',
                 'info',
-                "\n . "
+                " . "
             );
 
             $this->rollbackCommit = trim((string)$line);

@@ -28,12 +28,13 @@ trait DeployerDeployTrait
 
         $this->checkEnvFile('.env');
         $this->checkEnvFile('.env.testing');
-
-        exit;
     }
 
     protected function checkEnvFile($which)
     {
+        $dir =
+            str_replace("\\ ", " ", "{$this->c->projectRoot}/{$this->project}");
+
         $this->c->out(
             "Checking <white>{$which}</white> file ".
                 "diff between local & remote...",
@@ -60,7 +61,7 @@ trait DeployerDeployTrait
         $remoteVars = [];
 
         $localProcess = new Process('cat '.$which);
-        $localProcess->setWorkingDirectory(base_path());
+        $localProcess->setWorkingDirectory($dir);
         $localProcess->run(function ($type, $buffer) use (&$localVars) {
             $lines = explode("\n", $buffer);
             foreach ($lines as $line) {
@@ -93,37 +94,39 @@ trait DeployerDeployTrait
         if (count($diff) > 0) {
             $tabulated = [];
 
-            function addToTabulated($array, &$tabulated, $index, $max)
-            {
-                for ($i = 0; $i < $max; $i++) {
-                    if (!isset($array[$i])) {
-                        $array[$i] = '';
+            if (!function_exists('App\Console\Commands\Bin\addToTabulated')) {
+                function addToTabulated($array, &$tabulated, $index, $max)
+                {
+                    for ($i = 0; $i < $max; $i++) {
+                        if (!isset($array[$i])) {
+                            $array[$i] = '';
+                        }
+                    }
+
+                    foreach ($array as $key => $value) {
+                        if (!isset($tabulated[$key])) {
+                            $tabulated[$key] = [];
+                        }
+                        $tabulated[$key][$index] = $value;
                     }
                 }
 
-                foreach ($array as $key => $value) {
-                    if (!isset($tabulated[$key])) {
-                        $tabulated[$key] = [];
-                    }
-                    $tabulated[$key][$index] = $value;
+                $max = max([count($localVars), count($remoteVars)]);
+                addToTabulated($localVars, $tabulated, 0, $max);
+                addToTabulated($remoteVars, $tabulated, 1, $max);
+                addToTabulated($diff, $tabulated, 2, $max);
+
+                $this->c->table(
+                    ["Local {$which} vars", "Remote {$which} vars", "Diff"],
+                    $tabulated
+                );
+
+                if (!$this->c->confirm(
+                    "Local {$which} doesn't match remote. Continue?",
+                    false
+                )) {
+                    exit;
                 }
-            }
-
-            $max = max([count($localVars), count($remoteVars)]);
-            addToTabulated($localVars, $tabulated, 0, $max);
-            addToTabulated($remoteVars, $tabulated, 1, $max);
-            addToTabulated($diff, $tabulated, 2, $max);
-
-            $this->c->table(
-                ["Local {$which} vars", "Remote {$which} vars", "Diff"],
-                $tabulated
-            );
-
-            if (!$this->c->confirm(
-                "Local {$which} doesn't match remote. Continue?",
-                false
-            )) {
-                exit;
             }
         }
 
