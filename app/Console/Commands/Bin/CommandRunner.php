@@ -278,7 +278,20 @@ class CommandRunner
 
         $this->runFromStatuses(function ($status) use ($deployer) {
             $deployer->push($status['project']);
+
+            // Reset env vars, new ones were loaded per project within Deployer
+            foreach ($_ENV as $key => $value) {
+                putenv($key);
+                unset($_ENV[$key]);
+                unset($_SERVER[$key]);
+            }
+
+            // Load our deployment tool env vars back in
+            if (file_exists(base_path()."/.env")) {
+                (new Dotenv(base_path(), '.env'))->overload();
+            }
         });
+
     }
 
     protected function pullLatestSubmodules()
@@ -445,5 +458,16 @@ class CommandRunner
                 echo $buffer;
             });
         });
+
+        // Reset env vars, new ones were loaded per project within Deployer
+        foreach ($_ENV as $key => $value) {
+            putenv($key);
+            unset($_ENV[$key]);
+            unset($_SERVER[$key]);
+        }
+        // Load our deployment tool env vars back in
+        if (file_exists(base_path()."/.env")) {
+            (new Dotenv(base_path(), '.env'))->overload();
+        }
     }
 }
