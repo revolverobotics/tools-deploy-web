@@ -187,7 +187,7 @@ class CommandRunner
     {
         $this->runFromStatuses(function ($status) {
             $this->startProcess(
-                "git status",
+                "git -c color.status=always status",
                 $status['project']
             );
         });
