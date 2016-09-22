@@ -25,7 +25,6 @@ class Deployer
 
     protected $availableFlags = [
         ['a', 'use --amend in git commit'],
-        ['b', 'submit project to Jenkins for build'],
         ['d', 'generate documentation on deployment using docs:generate'],
         ['f', 'force push the repository'],
         ['l', 'leave untracked files out of commit'],
@@ -146,7 +145,7 @@ class Deployer
         // Check that _HOST entries exists for our remote servers
         $this->git->command = 'git remote';
         foreach ($this->git->exec() as $remote) {
-            if ($remote == 'origin' || $remote == 'jenkins') {
+            if ($remote == 'origin') {
                 continue;
             }
         }
@@ -157,25 +156,6 @@ class Deployer
                 throw new \Exception('Aborting.');
             }
         }
-
-        if ($this->isFlagSet('b')
-            && !env('DEPLOY_KEY_JENKINS', false)
-        ) {
-            throw new \Exception('Cannot push to Jenkins, no JENKINS_KEY '.
-                'defined in .env file.');
-        }
-
-        // if ($this->c->argument('remote') != 'origin'
-        //     && !env('DEPLOY_KEY', false)
-        // ) {
-        //     throw new \Exception('Cannot push to '.$this->git->remote.', no '.
-        //         'DEPLOY_KEY defined in .env file.');
-        // }
-        //
-        // if ($this->c->argument('remote') == 'jenkins') {
-        //     throw new \Exception('Manual push to Jenkins server disabled.'.
-        //         PHP_EOL.'Push to origin with the -b option to run a build.');
-        // }
     }
 
     protected function configRemotes()
@@ -195,6 +175,18 @@ class Deployer
             $remote = explode("\t", explode(":", $line)[0]);
             $remoteName = $remote[0];
             $address = $remote[1];
+
+            // Check if address is IP or Hostname from ~/.ssh/config
+            if (preg_match("/(?:[0-9]{1,3}\.){3}[0-9]{1,3}/", $address) === 0) {
+                $address = exec("ssh -G test-service-devices |".
+                     " awk '/^hostname / { print $2 }'");
+            }
+
+            if (preg_match("/(?:[0-9]{1,3}\.){3}[0-9]{1,3}/", $address) === 0) {
+                throw new \Exception(
+                    'Couldn\'t get an IP address for the given host. Aborting.'
+                );
+            }
 
             $deployKey = env('DEPLOY_KEY', null);
 
@@ -225,7 +217,7 @@ class Deployer
 
             $connections[$remoteName] = [
                 'host'      => $address,
-                'username'  => env('DEPLOY_USERNAME', 'ec2-user'),
+                'username'  => env('DEPLOY_USERNAME', 'web'),
                 'password'  => '',
                 'key'       => $deployKey,
                 'keyphrase' => '',

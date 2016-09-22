@@ -182,6 +182,7 @@ trait DeployerDeployTrait
                     if ($line != 'Application is now in maintenance mode.') {
                         $this->c->error('Couldn\'t put remote app into '.
                             'maintenance mode.');
+                        $this->c->error($line);
                         exit;
                     }
 

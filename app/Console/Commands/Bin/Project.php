@@ -44,7 +44,7 @@ class Project
         foreach ($listing as $item) {
             if (is_dir("{$root}/$item") &&
                 file_exists("{$root}/{$item}/composer.json") &&
-                !str_contains($item, 'tools-') // ignore tools
+                !in_array($item, explode(',', env('PROJECT_API_EXCLUDE')))
             ) {
                 array_push($this->projects, $item);
             }

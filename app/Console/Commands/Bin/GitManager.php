@@ -203,11 +203,7 @@ class GitManager
         $this->command = 'git push '.$this->remote.' :refs/tags/'.$tag;
 
         if ($this->remote != 'origin') {
-            if ($this->remote == 'jenkins') {
-                $this->addDeployKey('jenkins');
-            } else {
-                $this->addDeployKey('aws');
-            }
+            $this->addDeployKey('aws');
         }
 
         $this->exec();
@@ -278,11 +274,7 @@ class GitManager
 
         if ($type == 'aws') {
             $key = env('DEPLOY_KEY', null);
-            $insert = 'export GIT_SSH=~/bin/ssh-git && PKEY='.$key.' ';
-        } elseif ($type == 'jenkins') {
-            $key = env('JENKINS_KEY', null);
-            $insert = 'export GIT_SSH=~/bin/ssh-git-jenkins && PKEY='.$key.
-                ' ';
+            $insert = 'export GIT_SSH=~/bin/ssh-git.sh && PKEY='.$key.' ';
         }
 
         preg_match(

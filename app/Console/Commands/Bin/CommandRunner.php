@@ -351,23 +351,13 @@ class CommandRunner
         });
     }
 
-    protected function build()
-    {
-        $root = $this->c->projectRoot;
-
-        $this->runFromStatuses(function ($status) use ($root) {
-            $dir = "cd {$root}/{$status['project']} && ";
-            passthru($dir."php artisan push origin --ansi -b");
-        });
-    }
-
     protected function compareWithRemote()
     {
         $root = $this->c->projectRoot;
 
         $choice = $this->c->choice(
             'Compare local with which remote?',
-            array_merge(['<abort>'], ['dev', 'production', 'jenkins']),
+            array_merge(['<abort>'], ['dev', 'production']),
             0
         );
 
