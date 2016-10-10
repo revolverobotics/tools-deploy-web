@@ -16,6 +16,145 @@ trait DeployerDeployTrait
 
     protected $dbMigrations = false;
 
+    protected function checkRemoteDeployKey()
+    {
+        $host     = config("remote.connections.{$this->git->remote}.host");
+        $hostname = config("remote.connections.{$this->git->remote}.hostname");
+        $user     = config("remote.connections.{$this->git->remote}.username");
+
+        if ($host == "" || is_null($host)) {
+            $this->c->outError(
+                "Couldn't find a deploy key on {$hostname} ({$host}). ".
+                "You may not be able to update the remote repo or its".
+                " submodules."
+            );
+            if (!$this->c->confirm("Continue anyway?")) {
+                exit;
+            }
+        }
+
+        // Check for GitHub deploy key
+        $key = str_replace("-", "_", $hostname);
+        $this->c->out("\n\tChecking for deploy key {$key} on {$host}");
+        $this->session->run(["ls -la ~/.ssh/{$key}"], function ($noOut) {
+        });
+        if ($this->session->status() > 0) {
+            if ($this->c->confirm(
+                "Remote [<cyan>{$host}</cyan>] has no deploy key.  Create one?"
+            )) {
+                $this->session->run([
+                    "ssh-keygen -t rsa -b 4096 -C ".
+                    "\"software@revolverobotics.com\" -f ~/.ssh/{$key} -N ''"
+                ], function ($lines) {
+                    $this->c->out($lines);
+                });
+
+                $this->c->out('Generated public key:');
+
+                $this->session->run([
+                    "cat ~/.ssh/{$key}.pub"
+                ], function ($lines) {
+                    $this->c->out($lines);
+                });
+
+                $this->c->out('Adding key to ~/.ssh/config...');
+
+                $this->session->run(["
+                    touch ~/.ssh/config
+                    cat > ~/.ssh/config <<EOF
+Host github.com
+  User                   git
+  StrictHostKeyChecking  no
+  IdentityFile           /home/{$user}/.ssh/{$key}
+EOF
+                    chmod 600 ~/.ssh/config
+                "]);
+
+                $this->c->out("\nContents of ~/.ssh/config:");
+
+                $this->session->run(["cat ~/.ssh/config"], function ($lines) {
+                    $this->c->out($lines);
+                });
+
+                if (!$this->c->confirm(
+                    "Please copy and paste the public key into the repo's".
+                    " allowed deploy keys before continuing.  Also verify".
+                    " that ~/.ssh/config is correct."
+                )) {
+                    exit;
+                }
+            } else {
+                if (!$this->c->confirm(
+                    "Continue push without remote deploy key?"
+                )) {
+                    exit;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    protected function checkRepoAndWorkTree()
+    {
+        $host     = config("remote.connections.{$this->git->remote}.host");
+        $hostname = config("remote.connections.{$this->git->remote}.hostname");
+        $user     = config("remote.connections.{$this->git->remote}.username");
+
+        // Check for git repo
+        $this->c->out(
+            "\n\tChecking for bare repo at {$host}:".env('REMOTE_GITDIR')
+        );
+
+        $this->session->run(['ls -la '.env('REMOTE_GITDIR')], function ($noOut) {
+        });
+        if ($this->session->status() > 0) {
+            $this->c->outError("No bare repo found on remote {$host}");
+            if ($this->c->confirm('Create one?')) {
+                $this->session->run([
+                    'mkdir '.env('REMOTE_GITDIR'),
+                    'cd '.env('REMOTE_GITDIR'),
+                    'git init --bare',
+                ], function ($lines) {
+                    $this->c->out($lines);
+                });
+            }
+        }
+
+        // Check for work tree
+        $this->c->out(
+            "\n\tChecking for work tree at {$host}:".env('REMOTE_WORKTREE')
+        );
+
+        $this->session->run(
+            ['ls -la '.env('REMOTE_WORKTREE')],
+            function ($noOut) {
+                // nada
+            }
+        );
+        if ($this->session->status() > 0) {
+            $this->c->outError("No work tree found on remote {$host}");
+            if ($this->c->confirm('Create it?')) {
+                $this->session->run([
+                    'mkdir -p '.env('REMOTE_WORKTREE'),
+                ], function ($lines) {
+                    $this->c->out($lines);
+                });
+            }
+        }
+
+        $this->c->out(
+            "\n\tRemoving any git deploy hooks, this script handles that now."
+        );
+        $this->session->run(
+            ['rm '.env('REMOTE_GITDIR').'/hooks/*'],
+            function ($noOut) {
+            }
+        );
+
+        return true;
+    }
+
     protected function checkEnvFiles()
     {
         $this->c->out(
@@ -26,14 +165,24 @@ trait DeployerDeployTrait
         );
         $this->c->out('');
 
-        $this->checkEnvFile('.env');
-        $this->checkEnvFile('.env.testing');
+        if (!$this->checkEnvFile('.env')) {
+            return false;
+        }
+
+        if (!$this->checkEnvFile('.env.testing')) {
+            return false;
+        }
+
+        return true;
     }
 
     protected function checkEnvFile($which)
     {
-        $dir =
-            str_replace("\\ ", " ", "{$this->c->projectRoot}/{$this->project}");
+        $dir = str_replace(
+            "\\ ",
+            " ",
+            "{$this->c->projectRoot}/{$this->project}"
+        );
 
         $this->c->out(
             "Checking <white>{$which}</white> file ".
@@ -43,18 +192,21 @@ trait DeployerDeployTrait
         );
 
         // First check for file existence:
-        $commandArray = [
-            'export TERM=vt100',
-            'cd '.env('REMOTE_WORKTREE'),
-            'ls -la '.$which
-        ];
-
-        SSH::into($this->git->remote)->run($commandArray, function ($line) {
-            if (strpos($line, 'cannot access') !== false) {
-                $this->c->outError("Couldn't find {$which} on remote: {$line}");
-                throw new \Exception('Aborting.');
+        $this->session->run(
+            ['ls -la '.env('REMOTE_WORKTREE').'/'.$which],
+            function ($noOut) {
+                // nada
             }
-        });
+        );
+
+        if ($this->session->status() > 0) {
+            $this->c->outError(
+                "Couldn't find {$which} on remote: {$this->git->remote}"
+            );
+            if (!$this->c->confirm('Continue?')) {
+                return false;
+            }
+        }
 
         // Now check that files have matching variables:
         $localVars = [];
@@ -72,7 +224,7 @@ trait DeployerDeployTrait
             }
         });
 
-        SSH::into($this->git->remote)->run(
+        $this->session->run(
             [
                 'cd '.env('REMOTE_WORKTREE'),
                 'cat '.$which
@@ -125,7 +277,7 @@ trait DeployerDeployTrait
                     "Local {$which} doesn't match remote. Continue?",
                     false
                 )) {
-                    exit;
+                    return false;
                 }
             }
         }
@@ -135,61 +287,37 @@ trait DeployerDeployTrait
             'line',
             ' ✓ '
         );
+
+        return true;
     }
 
     protected function putIntoMaintenanceMode()
     {
-        $commandArray = [
-            'export TERM=vt100',
-            'cd '.env('REMOTE_WORKTREE'),
-            'pwd',
-            'php artisan down'
-        ];
+        $this->c->out(
+            'Placing remote app into maintenance mode...',
+            'info',
+            "\n . "
+        );
 
-        $count = 0;
-
-        SSH::into($this->git->remote)->run($commandArray, function ($line) use (
-            &$count
-        ) {
-            $count++;
-            $line = rtrim($line);
-
-            switch ($count) {
-                case 1:
-                    $this->c->out(
-                        'Verifying remote directory...',
-                        'info',
-                        "\n . "
-                    );
-
-                    if ($line != env('REMOTE_WORKTREE')) {
-                        $this->c->error(
-                            'REMOTE_WORKTREE set incorrectly.'
-                        );
-                        exit;
-                    }
-
-                    $this->c->out('Remote directory verified.', 'line', ' ✓ ');
-                    break;
-
-                case 2:
-                    $this->c->out(
-                        'Placing remote app into maintenance mode...',
-                        'info',
-                        "\n . "
-                    );
-
-                    if ($line != 'Application is now in maintenance mode.') {
-                        $this->c->error('Couldn\'t put remote app into '.
-                            'maintenance mode.');
-                        $this->c->error($line);
-                        exit;
-                    }
-
-                    $this->c->out($line, 'line', ' ✓ ');
-                    break;
+        // First check for file existence:
+        $this->session->run(
+            ['cd '.env('REMOTE_WORKTREE'), 'php artisan down'],
+            function ($lines) {
+                $this->c->out($lines);
             }
-        });
+        );
+
+        if ($this->session->status() > 0) {
+            $this->c->outError('Couldn\'t put remote app into '.
+                'maintenance mode.');
+            if (!$this->c->confirm('Continue with push?')) {
+                return false;
+            }
+        } else {
+            $this->c->out($line, 'line', ' ✓ ');
+        }
+
+        return true;
     }
 
     protected function runDeployCommands()
@@ -212,7 +340,7 @@ trait DeployerDeployTrait
             try {
                 $this->runUnitTests();
             } catch (\Exception $e) {
-                $this->c->error('Unit tests failed after performing a '.
+                $this->c->outError('Unit tests failed after performing a '.
                     'rollback.  We might be in some deep doo-doo.');
                 throw new \Exception('--- RED ALERT ---');
             }
@@ -225,37 +353,47 @@ trait DeployerDeployTrait
 
     protected function verifyCommitAndUpdateDependencies()
     {
+        $gitPaths = '--git-dir='.env('REMOTE_GITDIR').
+                    ' --work-tree='.env('REMOTE_WORKTREE');
+
         $commandArray = [
             'export TERM=vt100',
             'cd '.env('REMOTE_WORKTREE'),
-            'git --git-dir='.env('REMOTE_GITDIR').
-                ' --work-tree='.env('REMOTE_WORKTREE').
-                ' rev-parse --verify HEAD',
+            'echo -e "\n\tResetting work tree to last commit..."',
+            'git '.$gitPaths.' reset --hard',
+            'echo -e "\n\tChecking out work tree to pushed branch..."',
+            'git '.$gitPaths.' checkout '.$this->git->branch,
+            'echo -e "\n\tUpdating submodules..."',
+            'git '.$gitPaths.' submodule foreach git reset --hard',
+            'git '.$gitPaths.' submodule update',
+            'echo -e "\n\tUpdating compuser..."',
+            'composer self-update',
             'composer update'
         ];
 
         $count = 0;
 
-        SSH::into($this->git->remote)->run($commandArray, function ($line) use (
+
+        $this->session->run($commandArray, function ($line) use (
             &$count
         ) {
             $count++;
             $line = rtrim($line);
+            $this->c->out($line, 'info', "\t");
 
-            if ($count < 2) {
-                $this->c->out('Verifying commit...', 'info', "\n . ");
-
-                if ($line != $this->git->getCurrentCommitHash()) {
-                    $this->c->error('Newly-pushed commit hash does not match.');
-                    exit;
-                }
-
-                $this->c->out('New commit verified.', 'line', ' ✓ ');
-                $this->c->out('Updating dependencies...', 'info', "\n . ");
-                $this->c->out('');
-            } else {
-                $this->c->out($line, 'info', "\t");
-            }
+            // if (str_contains($line, 'commithash:')) {
+            //     $this->c->out('Verifying commit...', 'info', "\n . ");
+            //
+            //     $hash = str_replace("commithash:", "", $line);
+            //
+            //     if ($line != $this->git->getCurrentCommitHash()) {
+            //         $this->c->outError('Newly-pushed commit hash does not match.');
+            //         exit;
+            //     }
+            //     $this->c->out('New commit verified.', 'line', ' ✓ ');
+            //     $this->c->out('Updating dependencies...', 'info', "\n . ");
+            //     $this->c->out('');
+            // }
         });
 
         $this->c->out('Done.', 'line', "\n ✓ ");
@@ -273,7 +411,8 @@ trait DeployerDeployTrait
 
         $migrationStatus = "";
 
-        SSH::into($this->git->remote)->run($commandArray, function ($line) use (
+
+        $this->session->run($commandArray, function ($line) use (
             &$migrationStatus
         ) {
             $migrationStatus .= $line;
@@ -307,7 +446,7 @@ trait DeployerDeployTrait
 
         $this->c->out('Running unit tests...', 'info', "\n . ");
 
-        SSH::into($this->git->remote)->run($commandArray, function ($line) use (
+        $this->session->run($commandArray, function ($line) use (
             &$count
         ) {
             $count++;
@@ -317,7 +456,7 @@ trait DeployerDeployTrait
             $this->c->out($line, 'line', "\n");
 
             if (strpos($line, 'FAILURES!') !== false) {
-                $this->c->error('Unit tests failed.');
+                $this->c->outError('Unit tests failed.');
                 exit;
             }
         });
@@ -340,7 +479,7 @@ trait DeployerDeployTrait
             'cat .env'
         ];
 
-        SSH::into($this->git->remote)->run($commandArray, function ($line) use (
+        $this->session->run($commandArray, function ($line) use (
             &$dbCredentials
         ) {
             $line = rtrim($line);
@@ -395,7 +534,7 @@ trait DeployerDeployTrait
 
         $count = 0;
 
-        SSH::into($this->git->remote)->run($commandArray, function ($line) use (
+        $this->session->run($commandArray, function ($line) use (
             &$count
         ) {
             $line = rtrim($line);
@@ -408,7 +547,7 @@ trait DeployerDeployTrait
                     ' ✓ '
                 );
             } else {
-                $this->c->error(
+                $this->c->outError(
                     'Backup couldn\'t be found at /var/tmp/'.$this->dbBackup
                 );
 
@@ -419,7 +558,7 @@ trait DeployerDeployTrait
         });
 
         if ($count < 1) {
-            $this->c->error('No output from backup. It may have failed.');
+            $this->c->outError('No output from backup. It may have failed.');
         }
 
         $this->scpBackup();
@@ -455,7 +594,7 @@ trait DeployerDeployTrait
                 ' ✓ '
             );
         } else {
-            $this->c->error(
+            $this->c->outError(
                 'Backup couldn\'t be found at /var/tmp/'.$this->dbBackup
             );
 
@@ -478,7 +617,7 @@ trait DeployerDeployTrait
         $this->c->out('Running database migrations...', 'info', "\n . ");
 
         try {
-            SSH::into($this->git->remote)->run(
+            $this->session->run(
                 $commandArray,
                 function ($line) use (&$count) {
                     $this->c->out(trim($line));
@@ -488,7 +627,7 @@ trait DeployerDeployTrait
                 }
             );
         } catch (\Exception $e) {
-            $this->c->error('Exceptions found when running migrations.');
+            $this->c->outError('Exceptions found when running migrations.');
             exit;
         }
     }
@@ -503,7 +642,7 @@ trait DeployerDeployTrait
             'php artisan docs:generate'
         ];
 
-        SSH::into($this->git->remote)->run($commandArray);
+        $this->session->run($commandArray);
 
         $this->c->out('Done.', 'line', "\n ✓ ");
     }
@@ -526,7 +665,7 @@ trait DeployerDeployTrait
 
         $count = 0;
 
-        SSH::into($this->git->remote)->run($commandArray, function ($line) use (
+        $this->session->run($commandArray, function ($line) use (
             &$count
         ) {
             $count++;
@@ -541,7 +680,7 @@ trait DeployerDeployTrait
                     );
 
                     if ($line != 'Application is now live.') {
-                        $this->c->error('Couldn\'t take remote app out '.
+                        $this->c->outError('Couldn\'t take remote app out '.
                             'of maintenance mode');
                         exit;
                     }

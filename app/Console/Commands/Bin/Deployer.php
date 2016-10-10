@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands\Bin;
 
-use Dotenv\Dotenv;
+use SSH;
 use App\Console\Commands\Bin\GitManager;
 use App\Console\Commands\Bin\DeployerPushTrait;
 use App\Console\Commands\Bin\DeployerDeployTrait;
@@ -45,6 +45,8 @@ class Deployer
         'DEPLOY_KEY'
     ];
 
+    protected $session; // SSH session to our remote
+
     public function __construct($parentCommand)
     {
         if ($parentCommand instanceof \Illuminate\Console\Command) {
@@ -72,9 +74,11 @@ class Deployer
 
         $this->preFlightChecks();
 
-        $this->configRemotes();
+        // Get remote info from git remote -v, ~/.ssh/config, and .env
+        if (!$this->configRemotes()) {
+            return;
+        }
 
-        // check for env vars
         if (!$this->chooseRemote()) {
             return;
         }
@@ -90,141 +94,6 @@ class Deployer
 
         if (!$this->pushToRemote()) {
             return;
-        }
-    }
-
-    protected function getFlags()
-    {
-        $this->c->table(['Flag', 'Description'], $this->availableFlags);
-
-        $this->flags =
-            $this->c->ask('Which flags would you like to use?', '<none>');
-
-        if ($this->flags == '<none>') {
-            return;
-        }
-
-        foreach (str_split($this->flags) as $flag) {
-            if (!in_array($flag, array_pluck($this->availableFlags, 0))) {
-                $this->c->error(
-                    "No flag `{$flag}` exists. It will not be used."
-                );
-            }
-        }
-    }
-
-    protected function isFlagSet($flag)
-    {
-        if ($this->flags == '<none>') {
-            return false;
-        }
-
-        if (!in_array($flag, str_split($this->flags))) {
-            return false;
-        }
-
-        return true;
-    }
-
-    protected function loadEnvVars()
-    {
-        $dir = str_replace(
-            "\\ ",
-            " ",
-            "{$this->c->projectRoot}/{$this->project}"
-        );
-
-        // Include our test variables (instead of specifying in phpunit-XX.xml)
-        if (file_exists("{$dir}/.env")) {
-            (new Dotenv($dir, '.env'))->overload();
-        }
-    }
-
-    protected function preFlightChecks()
-    {
-        // Check that _HOST entries exists for our remote servers
-        $this->git->command = 'git remote';
-        foreach ($this->git->exec() as $remote) {
-            if ($remote == 'origin') {
-                continue;
-            }
-        }
-
-        foreach ($this->envVars as $var) {
-            if (is_null(env($var, null))) {
-                $this->c->outError('Missing env var: '.$var);
-                throw new \Exception('Aborting.');
-            }
-        }
-    }
-
-    protected function configRemotes()
-    {
-        $dir = str_replace(
-            "\\ ",
-            " ",
-            "{$this->c->projectRoot}/{$this->project}"
-        );
-
-        chdir($dir);
-
-        // Add project's remotes into the remote config for SSH
-        exec('git remote -v', $lines);
-
-        foreach ($lines as $line) {
-            $remote = explode("\t", explode(":", $line)[0]);
-            $remoteName = $remote[0];
-            $address = $remote[1];
-
-            // Check if address is IP or Hostname from ~/.ssh/config
-            if (preg_match("/(?:[0-9]{1,3}\.){3}[0-9]{1,3}/", $address) === 0) {
-                $address = exec("ssh -G test-service-devices |".
-                     " awk '/^hostname / { print $2 }'");
-            }
-
-            if (preg_match("/(?:[0-9]{1,3}\.){3}[0-9]{1,3}/", $address) === 0) {
-                throw new \Exception(
-                    'Couldn\'t get an IP address for the given host. Aborting.'
-                );
-            }
-
-            $deployKey = env('DEPLOY_KEY', null);
-
-            if (is_null($deployKey)) {
-                $this->c->error("`DEPLOY_KEY` is not defined, skipping.");
-                return false;
-            }
-
-            $deployPath = env('REMOTE_WORKTREE', null);
-
-            if (is_null($deployPath)) {
-                $this->c->error(
-                    "`REMOTE_WORKTREE` in {$status['project']}".
-                    " is not defined, skipping."
-                );
-                return false;
-            }
-
-            $gitDir = env('REMOTE_GITDIR');
-
-            if (is_null($gitDir)) {
-                $this->c->error(
-                    "`REMOTE_GITDIR` in {$status['project']}".
-                    " is not defined, skipping."
-                );
-                return false;
-            }
-
-            $connections[$remoteName] = [
-                'host'      => $address,
-                'username'  => env('DEPLOY_USERNAME', 'web'),
-                'password'  => '',
-                'key'       => $deployKey,
-                'keyphrase' => '',
-                'root'      => $deployPath,
-            ];
-
-            config(['remote' => ['connections' => $connections]]);
         }
     }
 }

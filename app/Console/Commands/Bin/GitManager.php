@@ -35,7 +35,7 @@ class GitManager
         if ($option == 'CLEAR_PREVIOUS_OUTPUT') {
             $this->clearOutputBuffer();
         }
-// echo "\nrunning: `".$this->command."`\n";
+
         exec($this->command, $this->outputBuffer);
 
         return $this->outputBuffer;

@@ -3,13 +3,151 @@
 namespace App\Console\Commands\Bin;
 
 use SSH;
-
+use Dotenv\Dotenv;
 use App\Console\Commands\Bin\DeployerDeployTrait;
 use App\Console\Commands\Bin\DeployerRollbackTrait;
 
 trait DeployerPushTrait
 {
     use DeployerDeployTrait, DeployerRollbackTrait;
+
+    protected function getFlags()
+    {
+        $this->c->table(['Flag', 'Description'], $this->availableFlags);
+
+        $this->flags =
+            $this->c->ask('Which flags would you like to use?', '<none>');
+
+        if ($this->flags == '<none>') {
+            return;
+        }
+
+        foreach (str_split($this->flags) as $flag) {
+            if (!in_array($flag, array_pluck($this->availableFlags, 0))) {
+                $this->c->outError(
+                    "No flag `{$flag}` exists. It will not be used."
+                );
+            }
+        }
+    }
+
+    protected function isFlagSet($flag)
+    {
+        if ($this->flags == '<none>') {
+            return false;
+        }
+
+        if (!in_array($flag, str_split($this->flags))) {
+            return false;
+        }
+
+        return true;
+    }
+
+    protected function loadEnvVars()
+    {
+        $dir = str_replace(
+            "\\ ",
+            " ",
+            "{$this->c->projectRoot}/{$this->project}"
+        );
+
+        if (file_exists("{$dir}/.env")) {
+            (new Dotenv($dir, '.env'))->overload();
+        }
+    }
+
+    protected function preFlightChecks()
+    {
+        // Check that _HOST entries exists for our remote servers
+        $this->git->command = 'git remote';
+        foreach ($this->git->exec() as $remote) {
+            if ($remote == 'origin') {
+                continue;
+            }
+        }
+
+        foreach ($this->envVars as $var) {
+            if (is_null(env($var, null))) {
+                $this->c->outError('Missing env var: '.$var);
+                throw new \Exception('Aborting.');
+            }
+        }
+    }
+
+    protected function configRemotes()
+    {
+        $dir = str_replace(
+            "\\ ",
+            " ",
+            "{$this->c->projectRoot}/{$this->project}"
+        );
+
+        chdir($dir);
+
+        // Add project's remotes into the remote config for SSH
+        foreach ($this->git->getRemotes() as $line) {
+            $remote = explode("\t", explode(":", $line)[0]);
+            $remoteName = $remote[0];
+            $address = $remote[1];
+
+            if (!str_contains($line, "(push)") || $remoteName == 'origin') {
+                continue;
+            }
+
+            // Check if address is IP or Hostname from ~/.ssh/config
+            if (preg_match("/(?:[0-9]{1,3}\.){3}[0-9]{1,3}/", $address) === 0) {
+                $address = exec("ssh -G ".$remote[1]." |".
+                     " awk '/^hostname / { print $2 }'");
+            }
+
+            if (preg_match("/(?:[0-9]{1,3}\.){3}[0-9]{1,3}/", $address) === 0) {
+                $this->c->outError('Couldn\'t get an IP address'.
+                                ' for the given host. Aborting.');
+                return false;
+            }
+
+            $deployKey = env('DEPLOY_KEY', null);
+
+            if (is_null($deployKey)) {
+                $this->c->outError("`DEPLOY_KEY` is not defined, skipping.");
+                return false;
+            }
+
+            $deployPath = env('REMOTE_WORKTREE', null);
+
+            if (is_null($deployPath)) {
+                $this->c->outError(
+                    "`REMOTE_WORKTREE` in {$status['project']}".
+                    " is not defined, skipping."
+                );
+                return false;
+            }
+
+            $gitDir = env('REMOTE_GITDIR');
+
+            if (is_null($gitDir)) {
+                $this->c->outError(
+                    "`REMOTE_GITDIR` in {$status['project']}".
+                    " is not defined, skipping."
+                );
+                return false;
+            }
+
+            $connections[$remoteName] = [
+                'host'      => $address,
+                'hostname' => $remote[1],
+                'username'  => env('DEPLOY_USERNAME', 'web'),
+                'password'  => '',
+                'key'       => $deployKey,
+                'keyphrase' => '',
+                'root'      => $deployPath,
+            ];
+
+            config(['remote' => ['connections' => $connections]]);
+        }
+        return true;
+    }
 
     protected function chooseRemote()
     {
@@ -39,6 +177,13 @@ trait DeployerPushTrait
         ));
 
         if ($this->git->remote == '<abort>') {
+            return false;
+        }
+
+        try {
+            $this->c->out("Establishing SSH connection with remote...\n");
+            $this->session = SSH::into($this->git->remote);
+        } catch (\Exception $e) {
             return false;
         }
 
@@ -93,7 +238,7 @@ trait DeployerPushTrait
                 ) {
                     $this->git->commit('', '--amend');
                 } else {
-                    $this->c->error('User aborted commit on --amend');
+                    $this->c->outError('User aborted commit on --amend');
                     return false;
                 }
             } else {
@@ -132,7 +277,7 @@ trait DeployerPushTrait
                     'info'
                 );
             } else {
-                $this->c->error('Push aborted.');
+                $this->c->outError('Push aborted.');
                 return false;
             }
         } else {
@@ -145,9 +290,21 @@ trait DeployerPushTrait
         }
 
         if ($this->isRemoteServer()) {
-            $this->checkEnvFiles();
+            if (!$this->checkRemoteDeployKey()) {
+                return false;
+            }
+            if (!$this->checkRepoAndWorkTree()) {
+                return false;
+            }
+            if (!$this->checkEnvFiles()) {
+                return false;
+            }
+
             $this->getRollbackCommit();
-            $this->putIntoMaintenanceMode();
+
+            if (!$this->putIntoMaintenanceMode()) {
+                return false;
+            }
         }
 
         $this->c->out('');
@@ -185,7 +342,7 @@ trait DeployerPushTrait
     protected function pushTags()
     {
         if ($this->git->branch != 'master' || !$this->isOrigin()) {
-            $this->c->error(
+            $this->c->outError(
                 "Can only tag branch `master`. Skipping version increment."
             );
             $this->c->out('');

@@ -147,7 +147,7 @@ trait DeployerRollbackTrait
             if (strpos($line, $this->rollbackCommit) !== false) {
                 $this->c->out('Rollback verified.', 'line', ' ✓ ');
             } else {
-                $this->c->error('Rollback could not be verified');
+                $this->c->outError('Rollback could not be verified');
 
                 exit;
             }

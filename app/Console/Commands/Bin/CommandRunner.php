@@ -406,14 +406,14 @@ class CommandRunner
             $deployKey = env('DEPLOY_KEY', null);
 
             if (is_null($deployKey)) {
-                $this->c->error("`DEPLOY_KEY` is not defined, skipping.");
+                $this->c->outError("`DEPLOY_KEY` is not defined, skipping.");
                 return false;
             }
 
             $deployPath = env('REMOTE_WORKTREE', null);
 
             if (is_null($deployPath)) {
-                $this->c->error(
+                $this->c->outError(
                     "`REMOTE_WORKTREE` in {$status['project']}".
                     " is not defined, skipping."
                 );
@@ -423,7 +423,7 @@ class CommandRunner
             $gitDir = env('REMOTE_GITDIR');
 
             if (is_null($gitDir)) {
-                $this->c->error(
+                $this->c->outError(
                     "`REMOTE_GITDIR` in {$status['project']}".
                     " is not defined, skipping."
                 );
@@ -432,7 +432,7 @@ class CommandRunner
 
             $connections[$remoteName] = [
                 'host'      => $address,
-                'username'  => env('DEPLOY_USERNAME', 'ec2-user'),
+                'username'  => env('DEPLOY_USERNAME', 'web'),
                 'password'  => '',
                 'key'       => $deployKey,
                 'keyphrase' => '',
