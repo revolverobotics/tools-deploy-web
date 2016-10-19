@@ -180,11 +180,13 @@ trait DeployerPushTrait
             return false;
         }
 
-        try {
-            $this->c->out("Establishing SSH connection with remote...\n");
-            $this->session = SSH::into($this->git->remote);
-        } catch (\Exception $e) {
-            return false;
+        if ($this->git->remote != 'origin') {
+            try {
+                $this->c->out("Establishing SSH connection with remote...\n");
+                $this->session = SSH::into($this->git->remote);
+            } catch (\Exception $e) {
+                return false;
+            }
         }
 
         return true;

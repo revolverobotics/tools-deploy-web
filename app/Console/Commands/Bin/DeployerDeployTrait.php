@@ -35,7 +35,12 @@ trait DeployerDeployTrait
 
         // Check for GitHub deploy key
         $key = str_replace("-", "_", $hostname);
-        $this->c->out("\n\tChecking for deploy key {$key} on {$host}");
+        $this->c->out(
+            "Checking for deploy key {$key} on {$host}",
+            'info',
+            "\n . "
+        );
+
         $this->session->run(["ls -la ~/.ssh/{$key}"], function ($noOut) {
         });
         if ($this->session->status() > 0) {
@@ -90,6 +95,12 @@ EOF
                     exit;
                 }
             }
+        } else {
+            $this->c->out(
+                'Deploy key for pulling from origin found.',
+                'line',
+                ' ✓ '
+            );
         }
 
         return true;
@@ -103,7 +114,9 @@ EOF
 
         // Check for git repo
         $this->c->out(
-            "\n\tChecking for bare repo at {$host}:".env('REMOTE_GITDIR')
+            "Checking for bare repo at {$host}:".env('REMOTE_GITDIR'),
+            'info',
+            "\n . "
         );
 
         $this->session->run(['ls -la '.env('REMOTE_GITDIR')], function ($noOut) {
@@ -119,11 +132,19 @@ EOF
                     $this->c->out($lines);
                 });
             }
+        } else {
+            $this->c->out(
+                'Bare repo OK.',
+                'line',
+                ' ✓ '
+            );
         }
 
         // Check for work tree
         $this->c->out(
-            "\n\tChecking for work tree at {$host}:".env('REMOTE_WORKTREE')
+            "Checking for work tree at {$host}:".env('REMOTE_WORKTREE'),
+            'info',
+            "\n . "
         );
 
         $this->session->run(
@@ -141,15 +162,29 @@ EOF
                     $this->c->out($lines);
                 });
             }
+        } else {
+            $this->c->out(
+                'Work tree OK.',
+                'line',
+                ' ✓ '
+            );
         }
 
         $this->c->out(
-            "\n\tRemoving any git deploy hooks, this script handles that now."
+            'Removing any post-deploy hooks, this '.
+            'script handles post-deploy actions',
+            'info',
+            "\n . "
         );
         $this->session->run(
             ['rm '.env('REMOTE_GITDIR').'/hooks/*'],
             function ($noOut) {
             }
+        );
+        $this->c->out(
+            'Done.',
+            'line',
+            ' ✓ '
         );
 
         return true;
@@ -303,7 +338,7 @@ EOF
         $this->session->run(
             ['cd '.env('REMOTE_WORKTREE'), 'php artisan down'],
             function ($lines) {
-                $this->c->out($lines);
+                // nada
             }
         );
 
@@ -314,7 +349,11 @@ EOF
                 return false;
             }
         } else {
-            $this->c->out($line, 'line', ' ✓ ');
+            $this->c->out(
+                'App placed into maintenance mode.',
+                'line',
+                ' ✓ '
+            );
         }
 
         return true;
@@ -357,7 +396,6 @@ EOF
                     ' --work-tree='.env('REMOTE_WORKTREE');
 
         $commandArray = [
-            'export TERM=vt100',
             'cd '.env('REMOTE_WORKTREE'),
             'echo -e "\n\tResetting work tree to last commit..."',
             'git '.$gitPaths.' reset --hard',
@@ -368,11 +406,11 @@ EOF
             'git '.$gitPaths.' submodule update',
             'echo -e "\n\tUpdating compuser..."',
             'composer self-update',
+            'composer install',
             'composer update'
         ];
 
         $count = 0;
-
 
         $this->session->run($commandArray, function ($line) use (
             &$count
@@ -380,20 +418,6 @@ EOF
             $count++;
             $line = rtrim($line);
             $this->c->out($line, 'info', "\t");
-
-            // if (str_contains($line, 'commithash:')) {
-            //     $this->c->out('Verifying commit...', 'info', "\n . ");
-            //
-            //     $hash = str_replace("commithash:", "", $line);
-            //
-            //     if ($line != $this->git->getCurrentCommitHash()) {
-            //         $this->c->outError('Newly-pushed commit hash does not match.');
-            //         exit;
-            //     }
-            //     $this->c->out('New commit verified.', 'line', ' ✓ ');
-            //     $this->c->out('Updating dependencies...', 'info', "\n . ");
-            //     $this->c->out('');
-            // }
         });
 
         $this->c->out('Done.', 'line', "\n ✓ ");
@@ -402,7 +426,6 @@ EOF
     protected function checkForMigrations()
     {
         $commandArray = [
-            'export TERM=vt100',
             'cd '.env('REMOTE_WORKTREE'),
             'php artisan migrate:status',
         ];
@@ -439,7 +462,6 @@ EOF
     protected function runUnitTests()
     {
         $commandArray = [
-            'export TERM=vt100',
             'cd '.env('REMOTE_WORKTREE'),
             'vendor/phpunit/phpunit/phpunit --no-coverage'
         ];
@@ -474,7 +496,6 @@ EOF
         ];
 
         $commandArray = [
-            'export TERM=vt100',
             'cd '.env('REMOTE_WORKTREE'),
             'cat .env'
         ];
@@ -521,7 +542,6 @@ EOF
             '_'.$this->pushTime.'.sql';
 
         $commandArray = [
-            'export TERM=vt100',
             "mysqldump -u {$dbCredentials['DB_USERNAME']} ".
             "--password={$dbCredentials['DB_PASSWORD']} ".
             "-h {$dbCredentials['DB_HOST']} ".
@@ -607,7 +627,6 @@ EOF
     protected function runMigrations()
     {
         $commandArray = [
-            'export TERM=vt100',
             'cd '.env('REMOTE_WORKTREE'),
             'php artisan migrate --force'
         ];
@@ -637,7 +656,6 @@ EOF
         $this->c->out('Generating API Documentation...', 'info', "\n . ");
 
         $commandArray = [
-            'export TERM=vt100',
             'cd '.env('REMOTE_WORKTREE'),
             'php artisan docs:generate'
         ];
@@ -658,36 +676,19 @@ EOF
         $this->c->out('');
 
         $commandArray = [
-            'export TERM=vt100',
             'cd '.env('REMOTE_WORKTREE'),
             'php artisan up',
         ];
 
-        $count = 0;
-
-        $this->session->run($commandArray, function ($line) use (
-            &$count
-        ) {
-            $count++;
-            $line = rtrim($line);
-
-            switch ($count) {
-                case 1:
-                    $this->c->out(
-                        '...',
-                        'info',
-                        " . "
-                    );
-
-                    if ($line != 'Application is now live.') {
-                        $this->c->outError('Couldn\'t take remote app out '.
-                            'of maintenance mode');
-                        exit;
-                    }
-
-                    $this->c->out($line, 'line', ' ✓ ');
-                    break;
-            }
+        $this->session->run($commandArray, function ($line) {
+            // nada
         });
+
+        if ($this->session->status() > 0) {
+            $this->c->outError('Couldn\'t take remote app out '.
+                'of maintenance mode');
+        } else {
+            $this->c->out('Application is now live.', 'line', ' ✓ ');
+        }
     }
 }
