@@ -26,14 +26,20 @@ trait OutputTrait
     public function out($output = null, $outputType = 'line', $indent = ' ')
     {
         if (is_null($output)) {
-            return;
+            return false;
         }
 
         if (is_array($output)) {
             foreach ($output as $line) {
+                if (strlen($line) < env('OUTPUT_TRUNCATE_LENGTH', 2)) {
+                    break;
+                }
                 $this->$outputType($indent.$line);
             }
         } elseif (is_string($output)) {
+            if (strlen($output) < env('OUTPUT_TRUNCATE_LENGTH', 2)) {
+                return false;
+            }
             $this->$outputType($indent.$output);
         }
     }

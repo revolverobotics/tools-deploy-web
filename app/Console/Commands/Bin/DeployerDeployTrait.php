@@ -41,8 +41,10 @@ trait DeployerDeployTrait
             "\n . "
         );
 
-        $this->session->run(["ls -la ~/.ssh/{$key}"], function ($noOut) {
+        $this->session->run(["ls -la ~/.ssh/{$key}"], function ($a) {
+            $a;
         });
+
         if ($this->session->status() > 0) {
             if ($this->c->confirm(
                 "Remote [<cyan>{$host}</cyan>] has no deploy key.  Create one?"
@@ -119,8 +121,10 @@ EOF
             "\n . "
         );
 
-        $this->session->run(['ls -la '.env('REMOTE_GITDIR')], function ($noOut) {
+        $this->session->run(['ls -la '.env('REMOTE_GITDIR')], function ($a) {
+            $a;
         });
+
         if ($this->session->status() > 0) {
             $this->c->outError("No bare repo found on remote {$host}");
             if ($this->c->confirm('Create one?')) {
@@ -133,11 +137,7 @@ EOF
                 });
             }
         } else {
-            $this->c->out(
-                'Bare repo OK.',
-                'line',
-                ' ✓ '
-            );
+            $this->c->out('Bare repo OK.', 'line', ' ✓ ');
         }
 
         // Check for work tree
@@ -147,12 +147,10 @@ EOF
             "\n . "
         );
 
-        $this->session->run(
-            ['ls -la '.env('REMOTE_WORKTREE')],
-            function ($noOut) {
-                // nada
-            }
-        );
+        $this->session->run(['ls -la '.env('REMOTE_WORKTREE')], function ($a) {
+            $a;
+        });
+
         if ($this->session->status() > 0) {
             $this->c->outError("No work tree found on remote {$host}");
             if ($this->c->confirm('Create it?')) {
@@ -163,11 +161,7 @@ EOF
                 });
             }
         } else {
-            $this->c->out(
-                'Work tree OK.',
-                'line',
-                ' ✓ '
-            );
+            $this->c->out('Work tree OK.', 'line', ' ✓ ');
         }
 
         $this->c->out(
@@ -176,16 +170,12 @@ EOF
             'info',
             "\n . "
         );
-        $this->session->run(
-            ['rm '.env('REMOTE_GITDIR').'/hooks/*'],
-            function ($noOut) {
-            }
-        );
-        $this->c->out(
-            'Done.',
-            'line',
-            ' ✓ '
-        );
+
+        $this->session->run(['rm '.env('REMOTE_GITDIR').'/hooks/*'], function ($a) {
+            $a;
+        });
+
+        $this->c->out('Done.', 'line', ' ✓ ');
 
         return true;
     }
@@ -194,11 +184,10 @@ EOF
     {
         $this->c->out(
             "Beginning server deployment on ".
-            "[<cyan>{$this->git->remote}</cyan>]...",
+            "[<cyan>{$this->git->remote}</cyan>]...\n",
             'comment',
-            "\n "
+            "\n\n "
         );
-        $this->c->out('');
 
         if (!$this->checkEnvFile('.env')) {
             return false;
@@ -227,12 +216,10 @@ EOF
         );
 
         // First check for file existence:
-        $this->session->run(
-            ['ls -la '.env('REMOTE_WORKTREE').'/'.$which],
-            function ($noOut) {
-                // nada
-            }
-        );
+        $this->session
+            ->run(['ls -la '.env('REMOTE_WORKTREE').'/'.$which], function ($a) {
+                $a;
+            });
 
         if ($this->session->status() > 0) {
             $this->c->outError(
@@ -335,12 +322,10 @@ EOF
         );
 
         // First check for file existence:
-        $this->session->run(
-            ['cd '.env('REMOTE_WORKTREE'), 'php artisan down'],
-            function ($lines) {
-                // nada
-            }
-        );
+        $this->session
+            ->run(['cd '.env('REMOTE_WORKTREE'), 'php artisan down'], function ($a) {
+                $a;
+            });
 
         if ($this->session->status() > 0) {
             $this->c->outError('Couldn\'t put remote app into '.
@@ -349,11 +334,7 @@ EOF
                 return false;
             }
         } else {
-            $this->c->out(
-                'App placed into maintenance mode.',
-                'line',
-                ' ✓ '
-            );
+            $this->c->out('App placed into maintenance mode.', 'line', ' ✓ ');
         }
 
         return true;
@@ -381,17 +362,25 @@ EOF
             } catch (\Exception $e) {
                 $this->c->outError('Unit tests failed after performing a '.
                     'rollback.  We might be in some deep doo-doo.');
-                throw new \Exception('--- RED ALERT ---');
+                return false;
             }
         }
 
         if ($this->isFlagSet('d')) {
             $this->generateDocumentation();
         }
+
+        return true;
     }
 
     protected function verifyCommitAndUpdateDependencies()
     {
+        $this->c->out(
+            "Verifying repo and running post-deploy commands...\n",
+            'comment',
+            "\n\n "
+        );
+
         $gitPaths = '--git-dir='.env('REMOTE_GITDIR').
                     ' --work-tree='.env('REMOTE_WORKTREE');
 
@@ -403,11 +392,13 @@ EOF
             'git '.$gitPaths.' checkout '.$this->git->branch,
             'echo -e "\n\tUpdating submodules..."',
             'git '.$gitPaths.' submodule foreach git reset --hard',
+            'git '.$gitPaths.' submodule init',
             'git '.$gitPaths.' submodule update',
             'echo -e "\n\tUpdating compuser..."',
-            'composer self-update',
-            'composer install',
-            'composer update'
+            'composer --ansi self-update',
+            'composer --ansi update',
+            'composer --ansi install',
+            'composer --ansi update'
         ];
 
         $count = 0;
@@ -416,11 +407,12 @@ EOF
             &$count
         ) {
             $count++;
-            $line = rtrim($line);
-            $this->c->out($line, 'info', "\t");
+            $this->c->out(trim($line), 'line', "  ");
         });
 
         $this->c->out('Done.', 'line', "\n ✓ ");
+
+        return true;
     }
 
     protected function checkForMigrations()
@@ -457,6 +449,8 @@ EOF
         } else {
             $this->c->out('No pending migrations found.', 'comment', ' ✓ ');
         }
+
+        return true;
     }
 
     protected function runUnitTests()
@@ -466,7 +460,7 @@ EOF
             'vendor/phpunit/phpunit/phpunit --no-coverage'
         ];
 
-        $this->c->out('Running unit tests...', 'info', "\n . ");
+        $this->c->out("Running unit tests...\n", 'comment', "\n\n ");
 
         $this->session->run($commandArray, function ($line) use (
             &$count
@@ -479,7 +473,7 @@ EOF
 
             if (strpos($line, 'FAILURES!') !== false) {
                 $this->c->outError('Unit tests failed.');
-                exit;
+                return false;
             }
         });
 
@@ -592,7 +586,7 @@ EOF
 
         passthru(
             'scp -i '.env('DEPLOY_KEY').
-            ' ec2-user@'.env($server.'_HOST').
+            ' '.env('DEPLOY_USER').'@'.env($server.'_HOST').
             ':/var/tmp/'.$this->dbBackup.' /var/tmp/.'
         );
 
@@ -631,6 +625,10 @@ EOF
             'php artisan migrate --force'
         ];
 
+        if (!$this->c->confirm('Do you want to run the pending migrations?')) {
+            return false;
+        }
+
         $count = 0;
 
         $this->c->out('Running database migrations...', 'info', "\n . ");
@@ -649,6 +647,8 @@ EOF
             $this->c->outError('Exceptions found when running migrations.');
             exit;
         }
+
+        return true;
     }
 
     protected function generateDocumentation()
@@ -660,14 +660,22 @@ EOF
             'php artisan docs:generate'
         ];
 
-        $this->session->run($commandArray);
+        $this->session->run($commandArray, function ($a) {
+            $a;
+        });
 
         $this->c->out('Done.', 'line', "\n ✓ ");
+
+        return true;
     }
 
     protected function takeOutOfMaintenanceMode()
     {
         $this->c->outputSeparator();
+
+        if (!$this->c->confirm('Do you want to make the app live?')) {
+            return false;
+        }
 
         $this->c->out(
             'Taking app out of maintenance mode...',
@@ -680,8 +688,8 @@ EOF
             'php artisan up',
         ];
 
-        $this->session->run($commandArray, function ($line) {
-            // nada
+        $this->session->run($commandArray, function ($a) {
+            $a;
         });
 
         if ($this->session->status() > 0) {
@@ -690,5 +698,7 @@ EOF
         } else {
             $this->c->out('Application is now live.', 'line', ' ✓ ');
         }
+
+        return true;
     }
 }

@@ -142,6 +142,7 @@ trait DeployerPushTrait
                 'key'       => $deployKey,
                 'keyphrase' => '',
                 'root'      => $deployPath,
+                'timeout'   => 600 // need long timeout
             ];
 
             config(['remote' => ['connections' => $connections]]);
@@ -325,6 +326,12 @@ trait DeployerPushTrait
         // if ($this->isOrigin() && $this->c->argument('version') != 'none') {
         //     $this->pushTags();
         // }
+        $this->c->out(
+            "Pushing repo to ".
+            "[<cyan>{$this->git->remote}</cyan>]...\n",
+            'comment',
+            "\n\n "
+        );
 
         $this->git->exec();
 

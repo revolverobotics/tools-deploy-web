@@ -25,10 +25,9 @@ class Deployer
 
     protected $availableFlags = [
         ['a', 'use --amend in git commit'],
-        ['d', 'generate documentation on deployment using docs:generate'],
+        ['d', 'documentation - php artisan docs:generate after deploy'],
         ['f', 'force push the repository'],
-        ['l', 'leave untracked files out of commit'],
-        ['m', 'skip migrations on deployment']
+        ['l', 'leave untracked files out of commit']
     ];
 
     public $remote;

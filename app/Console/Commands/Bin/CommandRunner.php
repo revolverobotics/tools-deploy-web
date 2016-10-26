@@ -357,7 +357,7 @@ class CommandRunner
 
         $choice = $this->c->choice(
             'Compare local with which remote?',
-            array_merge(['<abort>'], ['dev', 'production']),
+            array_merge(['<abort>'], ['stage', 'production']),
             0
         );
 
