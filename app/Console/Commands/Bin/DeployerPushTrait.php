@@ -137,7 +137,7 @@ trait DeployerPushTrait
             $connections[$remoteName] = [
                 'host'      => $address,
                 'hostname' => $remote[1],
-                'username'  => env('DEPLOY_USERNAME', 'web'),
+                'username'  => env('DEPLOY_USER', 'web'),
                 'password'  => '',
                 'key'       => $deployKey,
                 'keyphrase' => '',
@@ -239,7 +239,7 @@ trait DeployerPushTrait
                 if ($this->c->confirm('Are you sure you want to amend the last '.
                     'commit? (potentially destructive) [y|N]')
                 ) {
-                    $this->git->commit('', '--amend');
+                    $this->git->commit('', '--amend --no-edit');
                 } else {
                     $this->c->outError('User aborted commit on --amend');
                     return false;
@@ -323,9 +323,10 @@ trait DeployerPushTrait
             $this->git->addDeployKey('aws');
         }
 
-        // if ($this->isOrigin() && $this->c->argument('version') != 'none') {
+        // if ( $this->c->argument('version') != 'none') {
         //     $this->pushTags();
         // }
+
         $this->c->out(
             "Pushing repo to ".
             "[<cyan>{$this->git->remote}</cyan>]...\n",
@@ -350,14 +351,6 @@ trait DeployerPushTrait
 
     protected function pushTags()
     {
-        if ($this->git->branch != 'master' || !$this->isOrigin()) {
-            $this->c->outError(
-                "Can only tag branch `master`. Skipping version increment."
-            );
-            $this->c->out('');
-            return;
-        }
-
         if ($this->newVersion != false
             && $this->newVersion != $this->currentVersion
         ) {
