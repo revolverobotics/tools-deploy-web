@@ -2,8 +2,6 @@
 
 while read oldrev newrev refname
 
-echo "Publishing update: $GIT_DIR ==> $GIT_WORK_TREE"
-
 do
 
     branch=$(git rev-parse --symbolic --abbrev-ref $refname)
@@ -19,6 +17,8 @@ export GIT_DIR=/var/www/repos/$REPO
 export GIT_WORK_TREE=/var/www/sites/${REPO%.git}
 
 git checkout -f $branch
+
+echo "Update published: $GIT_DIR ==> $GIT_WORK_TREE"
 
 #sami update config/sami.php
 #apidoc generate
