@@ -26,4 +26,4 @@ echo "Update published: $GIT_DIR ==> $GIT_WORK_TREE"
 # Can't get sami/sami to install as a package w/ our custom Laravel 4.2.18 branch..
 unset GIT_DIR && unset GIT_WORK_TREE
 
-composer install --global sami/sami
+composer global require sami/sami
