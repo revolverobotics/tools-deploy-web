@@ -1,0 +1,11 @@
+{
+    "name": "revolverobotics/tools-deploy-web",
+    "description": "Stuff for deploying web apps, and stuff",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Timothy Huang",
+            "email": "tim@revolverobotics.com"
+        }
+    ]
+}
