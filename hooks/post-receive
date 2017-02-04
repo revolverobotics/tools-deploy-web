@@ -1,0 +1,28 @@
+#!/bin/sh
+
+## For app-video-web-legacy
+
+GIT_DIR=/var/www/repos/$(basename "$PWD")
+GIT_WORK_TREE=/var/www/sites/${GIT_DIR%.git}
+
+echo "Publishing update: $GIT_DIR ==> $GIT_WORK_TREE"
+
+while read oldrev newrev refname
+
+do
+
+    branch=$(git rev-parse --symbolic --abbrev-ref $refname)
+
+    echo "Publishing branch: $branch"
+
+done
+
+git checkout -f $branch
+
+#sami update config/sami.php
+#apidoc generate
+
+# Can't get sami/sami to install as a package w/ our custom Laravel 4.2.18 branch..
+mkdir /var/www/packages/
+
+git clone git@github.com:revolverobotics/tools-sami-phpdocs.git /var/www/packages/tools-sami-phpdocs
